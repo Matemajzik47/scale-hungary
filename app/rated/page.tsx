@@ -5,21 +5,28 @@ import Link from 'next/link'
 import { Star, Music } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
-type RatedTrackRow = {
+type RatingRow = {
   score: number
   created_at: string
   track_id: string
-  tracks: {
-    id: string
-    title: string
-    spotify_track_id: string | null
-    albums: {
-      id: string
-      title: string
-      cover_url: string | null
-    } | null
-    artists: { id: string; name: string } | null
-  } | null
+}
+
+type TrackRow = {
+  id: string
+  title: string
+  album_id: string
+}
+
+type AlbumRow = {
+  id: string
+  title: string
+  cover_url: string | null
+  artist_id: string
+}
+
+type ArtistRow = {
+  id: string
+  name: string
 }
 
 type RatedItem = {
@@ -52,30 +59,78 @@ export default function RatedPage() {
         return
       }
 
-      const { data, error } = await supabase
+      // 1. lépés: a user saját rating-jei (dal-azonosítóval)
+      const { data: ratingsData, error: ratingsError } = await supabase
         .from('ratings')
-        .select(
-          'score, created_at, track_id, tracks(id, title, spotify_track_id, albums(id, title, cover_url), artists(id, name))'
-        )
+        .select('score, created_at, track_id')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
-      if (error || !data) {
+      if (ratingsError || !ratingsData || ratingsData.length === 0) {
         setLoading(false)
         return
       }
 
-      const mapped: RatedItem[] = (data as unknown as RatedTrackRow[])
-        .filter((r) => r.tracks !== null)
-        .map((r) => ({
-          trackId: r.track_id,
-          title: r.tracks!.title,
-          albumTitle: r.tracks!.albums?.title ?? '',
-          coverUrl: r.tracks!.albums?.cover_url ?? null,
-          artistName: r.tracks!.artists?.name ?? 'Ismeretlen előadó',
-          rating: Number(r.score),
-          ratedAt: formatRatedAt(r.created_at),
-        }))
+      const ratings = ratingsData as RatingRow[]
+      const trackIds = ratings.map((r) => r.track_id)
+
+      // 2. lépés: a hozzájuk tartozó dalok (cím + album_id)
+      const { data: tracksData } = await supabase
+        .from('tracks')
+        .select('id, title, album_id')
+        .in('id', trackIds)
+
+      const tracksById = new Map<string, TrackRow>()
+      for (const t of (tracksData as TrackRow[] | null) ?? []) {
+        tracksById.set(t.id, t)
+      }
+
+      const albumIds = Array.from(new Set(Array.from(tracksById.values()).map((t) => t.album_id)))
+
+      // 3. lépés: az albumok (borító + artist_id)
+      const { data: albumsData } = await supabase
+        .from('albums')
+        .select('id, title, cover_url, artist_id')
+        .in('id', albumIds.length > 0 ? albumIds : [''])
+
+      const albumsById = new Map<string, AlbumRow>()
+      for (const a of (albumsData as AlbumRow[] | null) ?? []) {
+        albumsById.set(a.id, a)
+      }
+
+      const artistIds = Array.from(
+        new Set(Array.from(albumsById.values()).map((a) => a.artist_id))
+      )
+
+      // 4. lépés: az előadók
+      const { data: artistsData } = await supabase
+        .from('artists')
+        .select('id, name')
+        .in('id', artistIds.length > 0 ? artistIds : [''])
+
+      const artistsById = new Map<string, ArtistRow>()
+      for (const ar of (artistsData as ArtistRow[] | null) ?? []) {
+        artistsById.set(ar.id, ar)
+      }
+
+      // Összefűzés egy listává
+      const mapped: RatedItem[] = ratings
+        .map((r) => {
+          const track = tracksById.get(r.track_id)
+          if (!track) return null
+          const album = albumsById.get(track.album_id)
+          const artist = album ? artistsById.get(album.artist_id) : undefined
+          return {
+            trackId: r.track_id,
+            title: track.title,
+            albumTitle: album?.title ?? '',
+            coverUrl: album?.cover_url ?? null,
+            artistName: artist?.name ?? 'Ismeretlen előadó',
+            rating: Number(r.score),
+            ratedAt: formatRatedAt(r.created_at),
+          }
+        })
+        .filter((item): item is RatedItem => item !== null)
 
       setItems(mapped)
       setLoading(false)
