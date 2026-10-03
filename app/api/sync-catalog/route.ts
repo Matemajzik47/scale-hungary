@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { fetchRecentHungarianReleases } from '@/lib/musicbrainz'
 import { searchSpotifyAlbum } from '@/lib/spotify-server'
@@ -9,10 +9,20 @@ import { getIsoWeekString } from '@/lib/week'
  * összeköti őket a Spotify adataival (borító, track-lista), és beírja
  * az artists / albums / tracks táblákba.
  *
- * Kézzel hívható: GET /api/sync-catalog
- * Később: ütemezett job hívja automatikusan.
+ * Naponta automatikusan fut a Vercel Cron-on keresztül (lásd vercel.json),
+ * ami az Authorization headerben küldi a CRON_SECRET-et. Kézzel is hívható
+ * fejlesztés közben, ha a .env.local-ban be van állítva a CRON_SECRET és
+ * azt Bearer tokenként megadod.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET
+  if (cronSecret) {
+    const authHeader = request.headers.get('authorization')
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+  }
+
   const summary = {
     processed: 0,
     newArtists: 0,
@@ -100,11 +110,13 @@ export async function GET() {
 
         summary.processed++
       } catch (err) {
-        summary.errors.push(
-          `${release.artistName} - ${release.title}: ${
-            err instanceof Error ? err.message : String(err)
-          }`
-        )
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'object' && err !== null && 'message' in err
+            ? String((err as { message: unknown }).message)
+            : JSON.stringify(err)
+        summary.errors.push(`${release.artistName} - ${release.title}: ${message}`)
       }
     }
 
