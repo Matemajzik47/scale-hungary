@@ -73,7 +73,7 @@ export function QrCodeShareModal({ isOpen, onClose, username }: QrCodeShareModal
               <div className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-[#FF5B37]" />
                 <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-neutral-400">
-                  Scale Music ID
+                  Scale Music Taste ID
                 </span>
               </div>
               <button

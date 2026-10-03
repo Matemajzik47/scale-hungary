@@ -12,7 +12,7 @@ interface MusicIdCardProps {
 export function MusicIdCard({ username, tierLabel, curatorScore }: MusicIdCardProps) {
   return (
     <motion.section
-      aria-label="Music ID kártya"
+      aria-label="Music Taste ID kártya"
       whileHover={{ scale: 1.01 }}
       transition={{ type: 'spring', stiffness: 400, damping: 25 }}
       className="relative w-full overflow-hidden rounded-[22px] border border-neutral-800 bg-gradient-to-br from-[#1E1F24] via-[#16171B] to-[#0F1013] p-4 text-white shadow-[0_12px_28px_rgba(0,0,0,0.22)]"
@@ -33,7 +33,7 @@ export function MusicIdCard({ username, tierLabel, curatorScore }: MusicIdCardPr
             SC
           </div>
           <span className="font-mono text-[10px] font-extrabold uppercase tracking-widest text-neutral-300">
-            SCALE PASS · MUSIC ID
+            SCALE MUSIC TASTE ID
           </span>
         </div>
         <span className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[10px] text-neutral-300 backdrop-blur-sm">
