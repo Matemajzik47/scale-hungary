@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { X, Copy, Check } from 'lucide-react'
-import QRCode from 'qrcode'
+import QRCodeStyling from 'qr-code-styling'
 
 interface QrCodeShareModalProps {
   isOpen: boolean
@@ -13,20 +13,35 @@ interface QrCodeShareModalProps {
 
 export function QrCodeShareModal({ isOpen, onClose, username }: QrCodeShareModalProps) {
   const [copied, setCopied] = useState(false)
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+  const qrContainerRef = useRef<HTMLDivElement>(null)
+  const qrInstanceRef = useRef<QRCodeStyling | null>(null)
 
   const profileUrl = typeof window !== 'undefined' ? `${window.location.origin}/u/${username}` : ''
 
-  // Valódi, beolvasható QR-kód generálása a profil linkből
+  // Valódi, beolvasható QR-kód generálása a profil linkből — lekerekített
+  // pontokkal és Scale-narancs akcentussal, a mockup stílusát követve
   useEffect(() => {
-    if (!isOpen || !profileUrl) return
-    QRCode.toDataURL(profileUrl, {
-      width: 320,
-      margin: 1,
-      color: { dark: '#171717', light: '#FFFFFF' },
-    })
-      .then(setQrDataUrl)
-      .catch(() => setQrDataUrl(null))
+    if (!isOpen || !profileUrl || !qrContainerRef.current) return
+
+    if (!qrInstanceRef.current) {
+      qrInstanceRef.current = new QRCodeStyling({
+        width: 184,
+        height: 184,
+        type: 'svg',
+        data: profileUrl,
+        margin: 4,
+        qrOptions: { errorCorrectionLevel: 'H' },
+        dotsOptions: { type: 'rounded', color: '#171717' },
+        cornersSquareOptions: { type: 'extra-rounded', color: '#171717' },
+        cornersDotOptions: { type: 'dot', color: '#FF5B37' },
+        backgroundOptions: { color: '#FFFFFF' },
+        imageOptions: { imageSize: 0.32, margin: 4, crossOrigin: 'anonymous' },
+      })
+      qrContainerRef.current.innerHTML = ''
+      qrInstanceRef.current.append(qrContainerRef.current)
+    } else {
+      qrInstanceRef.current.update({ data: profileUrl })
+    }
   }, [isOpen, profileUrl])
 
   function handleCopy() {
@@ -71,13 +86,11 @@ export function QrCodeShareModal({ isOpen, onClose, username }: QrCodeShareModal
               </button>
             </div>
 
-            <div className="relative flex h-[184px] w-[184px] items-center justify-center rounded-[22px] border border-neutral-200/70 bg-[#FAFAFA] p-3.5 shadow-inner">
-              {qrDataUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={qrDataUrl} alt={`QR kód @${username} profiljához`} className="h-full w-full" />
-              ) : (
-                <span className="text-xs text-neutral-400">QR generálása...</span>
-              )}
+            <div className="relative flex h-[184px] w-[184px] items-center justify-center rounded-[22px] border border-neutral-200/70 bg-[#FAFAFA] shadow-inner">
+              <div ref={qrContainerRef} aria-label={`QR kód @${username} profiljához`} />
+              <div className="pointer-events-none absolute flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#171717] text-[11px] font-black tracking-tighter text-white shadow-md">
+                SC
+              </div>
             </div>
 
             <div className="flex flex-col items-center gap-1">
