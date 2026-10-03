@@ -242,7 +242,7 @@ export default function ProfilePage() {
             Sorozat
           </span>
           <span className="font-mono text-base font-black text-[#FF5B37]">
-            {stats?.current_streak ?? 0} hét
+            {stats?.current_streak ?? 0} nap
           </span>
         </div>
 

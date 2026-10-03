@@ -1,10 +1,22 @@
 import { supabase } from '@/lib/supabase'
-import { getIsoWeekString } from '@/lib/week'
+
+function getIsoDateString(date: Date): string {
+  // YYYY-MM-DD, helyi idő szerint (nem UTC), hogy a nap-váltás a usernek
+  // logikus pillanatban történjen, ne éjfélkor UTC-ben
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
 
 /**
  * Egy rating mentése után hívjuk meg: újraszámolja a total_ratings-et
- * és frissíti a heti streak-et a user_stats táblában.
- * (Megosztott logika a Discover és a Search oldal között.)
+ * és frissíti a NAPI streak-et a user_stats táblában.
+ * (A last_rated_week oszlop neve történelmi, de mostantól egy ISO dátumot
+ * tárol benne, pl. "2026-10-03" — a napi sorozat alapja.)
+ *
+ * Szabály: ha ma már rate-elt → marad a streak; ha tegnap rate-elt
+ * utoljára → +1; egyébként (kihagyott nap) → reset 1-re.
  */
 export async function updateUserStats(userId: string) {
   const { count } = await supabase
@@ -13,10 +25,10 @@ export async function updateUserStats(userId: string) {
     .eq('user_id', userId)
 
   const now = new Date()
-  const nowWeek = getIsoWeekString(now)
-  const prevWeekDate = new Date(now)
-  prevWeekDate.setDate(prevWeekDate.getDate() - 7)
-  const prevWeek = getIsoWeekString(prevWeekDate)
+  const today = getIsoDateString(now)
+  const yesterdayDate = new Date(now)
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1)
+  const yesterday = getIsoDateString(yesterdayDate)
 
   const { data: existingStats } = await supabase
     .from('user_stats')
@@ -26,9 +38,9 @@ export async function updateUserStats(userId: string) {
 
   let newStreak = 1
   if (existingStats) {
-    if (existingStats.last_rated_week === nowWeek) {
+    if (existingStats.last_rated_week === today) {
       newStreak = existingStats.current_streak
-    } else if (existingStats.last_rated_week === prevWeek) {
+    } else if (existingStats.last_rated_week === yesterday) {
       newStreak = existingStats.current_streak + 1
     } else {
       newStreak = 1
@@ -40,7 +52,7 @@ export async function updateUserStats(userId: string) {
       user_id: userId,
       total_ratings: count ?? 0,
       current_streak: newStreak,
-      last_rated_week: nowWeek,
+      last_rated_week: today,
     },
     { onConflict: 'user_id' }
   )
