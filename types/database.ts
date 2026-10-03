@@ -35,7 +35,7 @@ export interface Track {
 export interface Rating {
   id: string
   user_id: string
-  album_id: string
+  track_id: string
   score: number // 1-10
   created_at: string
 }

@@ -1,10 +1,13 @@
-export interface DiscoverAlbum {
+export interface DiscoverTrack {
   id: string
   title: string
-  cover_url: string | null
-  release_date: string | null
-  release_week: string | null
-  spotify_album_id: string | null
+  spotify_track_id: string | null
+  album: {
+    id: string
+    title: string
+    cover_url: string | null
+    spotify_album_id: string | null
+  }
   artist: {
     id: string
     name: string

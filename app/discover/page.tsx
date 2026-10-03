@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { DiscoveryCard } from '@/components/discover/DiscoveryCard'
 import { CommunityBadge } from '@/components/discover/CommunityBadge'
 import { getIsoWeekString } from '@/lib/week'
-import type { DiscoverAlbum } from '@/types/discover'
+import type { DiscoverTrack } from '@/types/discover'
 
 async function updateUserStats(userId: string) {
   const { count } = await supabase
@@ -49,8 +49,17 @@ async function updateUserStats(userId: string) {
   )
 }
 
+type AlbumWithTracksRow = {
+  id: string
+  title: string
+  cover_url: string | null
+  spotify_album_id: string | null
+  artists: { id: string; name: string } | null
+  tracks: { id: string; title: string; spotify_track_id: string | null }[] | null
+}
+
 export default function DiscoverPage() {
-  const [albums, setAlbums] = useState<DiscoverAlbum[]>([])
+  const [tracks, setTracks] = useState<DiscoverTrack[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [ratings, setRatings] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
@@ -64,66 +73,78 @@ export default function DiscoverPage() {
       } = await supabase.auth.getUser()
       setUserId(user?.id ?? null)
 
-      // Albumok lekérése az előadóval összekötve
+      // Albumok lekérése a hozzájuk tartozó dalokkal és előadóval együtt
       const { data: albumsData, error: albumsError } = await supabase
         .from('albums')
-        .select('id, title, cover_url, release_date, release_week, spotify_album_id, artists(id, name)')
+        .select('id, title, cover_url, spotify_album_id, artists(id, name), tracks(id, title, spotify_track_id)')
         .order('release_date', { ascending: false })
-        .limit(30)
+        .limit(15)
 
       if (albumsError || !albumsData) {
         setLoading(false)
         return
       }
 
-      const albumIds = albumsData.map((a) => a.id)
-
-      // Összes rating lekérése ezekhez az albumokhoz, hogy kiszámoljuk a közösségi átlagot
-      const { data: allRatings } = await supabase
-        .from('ratings')
-        .select('album_id, score, user_id')
-        .in('album_id', albumIds)
-
-      const ratingsByAlbum = new Map<string, number[]>()
-      const myRatings: Record<string, number> = {}
-
-      for (const r of allRatings ?? []) {
-        const list = ratingsByAlbum.get(r.album_id) ?? []
-        list.push(Number(r.score))
-        ratingsByAlbum.set(r.album_id, list)
-        if (user && r.user_id === user.id) {
-          myRatings[r.album_id] = Number(r.score)
-        }
-      }
-
-      type AlbumRow = {
+      // Albumok kilapítása dal-listává — minden dal saját kártya lesz a swipe-flow-ban
+      const flatTracks: {
         id: string
         title: string
-        cover_url: string | null
-        release_date: string | null
-        release_week: string | null
-        spotify_album_id: string | null
-        artists: { id: string; name: string } | null
-      }
+        spotify_track_id: string | null
+        album: { id: string; title: string; cover_url: string | null; spotify_album_id: string | null }
+        artist: { id: string; name: string }
+      }[] = []
 
-      const mapped: DiscoverAlbum[] = (albumsData as unknown as AlbumRow[]).map((a) => {
-        const scores = ratingsByAlbum.get(a.id) ?? []
-        const avg = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null
-        return {
+      for (const a of albumsData as unknown as AlbumWithTracksRow[]) {
+        const artist = { id: a.artists?.id ?? '', name: a.artists?.name ?? 'Ismeretlen előadó' }
+        const album = {
           id: a.id,
           title: a.title,
           cover_url: a.cover_url,
-          release_date: a.release_date,
-          release_week: a.release_week,
           spotify_album_id: a.spotify_album_id,
-          artist: { id: a.artists?.id ?? '', name: a.artists?.name ?? 'Ismeretlen előadó' },
+        }
+        for (const t of a.tracks ?? []) {
+          flatTracks.push({
+            id: t.id,
+            title: t.title,
+            spotify_track_id: t.spotify_track_id,
+            album,
+            artist,
+          })
+        }
+      }
+
+      const trackIds = flatTracks.map((t) => t.id)
+
+      // Rating-ek lekérése az összes dalhoz, hogy kiszámoljuk a közösségi átlagot
+      const { data: allRatings } = await supabase
+        .from('ratings')
+        .select('track_id, score, user_id')
+        .in('track_id', trackIds.length > 0 ? trackIds : [''])
+
+      const ratingsByTrack = new Map<string, number[]>()
+      const myRatings: Record<string, number> = {}
+
+      for (const r of allRatings ?? []) {
+        const list = ratingsByTrack.get(r.track_id) ?? []
+        list.push(Number(r.score))
+        ratingsByTrack.set(r.track_id, list)
+        if (user && r.user_id === user.id) {
+          myRatings[r.track_id] = Number(r.score)
+        }
+      }
+
+      const mapped: DiscoverTrack[] = flatTracks.map((t) => {
+        const scores = ratingsByTrack.get(t.id) ?? []
+        const avg = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null
+        return {
+          ...t,
           communityAverage: avg,
           totalRatings: scores.length,
-          userRating: myRatings[a.id] ?? null,
+          userRating: myRatings[t.id] ?? null,
         }
       })
 
-      setAlbums(mapped)
+      setTracks(mapped)
       setRatings(myRatings)
       setLoading(false)
     }
@@ -131,25 +152,25 @@ export default function DiscoverPage() {
     load()
   }, [])
 
-  const currentAlbum = albums[currentIndex]
-  const currentRating = currentAlbum ? ratings[currentAlbum.id] ?? 7.5 : 7.5
+  const currentTrack = tracks[currentIndex]
+  const currentRating = currentTrack ? ratings[currentTrack.id] ?? 7.5 : 7.5
 
   const handleRatingChange = useCallback(
     (val: number) => {
-      if (!currentAlbum) return
-      setRatings((prev) => ({ ...prev, [currentAlbum.id]: val }))
+      if (!currentTrack) return
+      setRatings((prev) => ({ ...prev, [currentTrack.id]: val }))
     },
-    [currentAlbum]
+    [currentTrack]
   )
 
-  async function saveRating(albumId: string, score: number) {
+  async function saveRating(trackId: string, score: number) {
     if (!userId) {
       setSaveStatus('Jelentkezz be a rate-eléshez!')
       return
     }
     const { error } = await supabase
       .from('ratings')
-      .upsert({ user_id: userId, album_id: albumId, score }, { onConflict: 'user_id,album_id' })
+      .upsert({ user_id: userId, track_id: trackId, score }, { onConflict: 'user_id,track_id' })
 
     if (!error) {
       await updateUserStats(userId)
@@ -160,16 +181,16 @@ export default function DiscoverPage() {
   }
 
   function handleNext() {
-    setCurrentIndex((prev) => (prev + 1) % albums.length)
+    setCurrentIndex((prev) => (prev + 1) % tracks.length)
   }
 
   function handlePrev() {
-    setCurrentIndex((prev) => (prev - 1 + albums.length) % albums.length)
+    setCurrentIndex((prev) => (prev - 1 + tracks.length) % tracks.length)
   }
 
   async function handleSwipe(direction: 'left' | 'right') {
-    if (direction === 'right' && currentAlbum) {
-      await saveRating(currentAlbum.id, currentRating)
+    if (direction === 'right' && currentTrack) {
+      await saveRating(currentTrack.id, currentRating)
     }
     handleNext()
   }
@@ -182,7 +203,7 @@ export default function DiscoverPage() {
     )
   }
 
-  if (albums.length === 0) {
+  if (tracks.length === 0) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-2 text-center text-neutral-500">
         <p>Még nincs zene a katalógusban.</p>
@@ -196,7 +217,7 @@ export default function DiscoverPage() {
       <div className="relative flex w-full flex-1 items-center justify-center">
         <AnimatePresence mode="wait">
           <motion.div
-            key={currentAlbum.id}
+            key={currentTrack.id}
             initial={{ scale: 0.96, opacity: 0, y: 8 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.94, opacity: 0, y: -8 }}
@@ -204,7 +225,7 @@ export default function DiscoverPage() {
             className="w-full"
           >
             <DiscoveryCard
-              album={currentAlbum}
+              track={currentTrack}
               rating={currentRating}
               onRatingChange={handleRatingChange}
               onSwipe={handleSwipe}
@@ -217,8 +238,8 @@ export default function DiscoverPage() {
         {saveStatus && <p className="text-xs font-medium text-[#FF5B37]">{saveStatus}</p>}
 
         <CommunityBadge
-          score={currentAlbum.communityAverage}
-          totalRatings={currentAlbum.totalRatings}
+          score={currentTrack.communityAverage}
+          totalRatings={currentTrack.totalRatings}
         />
 
         <div className="flex w-full items-center justify-between px-2 text-neutral-400">
@@ -233,7 +254,7 @@ export default function DiscoverPage() {
 
           <button
             type="button"
-            onClick={() => saveRating(currentAlbum.id, currentRating)}
+            onClick={() => saveRating(currentTrack.id, currentRating)}
             className="rounded-full bg-black px-5 py-2 text-xs font-semibold text-white transition hover:bg-gray-800"
           >
             Mentés

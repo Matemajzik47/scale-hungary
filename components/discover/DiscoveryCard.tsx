@@ -3,16 +3,16 @@
 import { motion, useMotionValue, useTransform, type PanInfo } from 'motion/react'
 import { Disc3, Sparkles, ArrowRight } from 'lucide-react'
 import { RatingControl } from './RatingControl'
-import type { DiscoverAlbum } from '@/types/discover'
+import type { DiscoverTrack } from '@/types/discover'
 
 interface DiscoveryCardProps {
-  album: DiscoverAlbum
+  track: DiscoverTrack
   rating: number
   onRatingChange: (val: number) => void
   onSwipe: (direction: 'left' | 'right') => void
 }
 
-export function DiscoveryCard({ album, rating, onRatingChange, onSwipe }: DiscoveryCardProps) {
+export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: DiscoveryCardProps) {
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-200, 200], [-10, 10])
   const opacity = useTransform(x, [-250, -150, 0, 150, 250], [0.4, 0.9, 1, 0.9, 0.4])
@@ -27,8 +27,11 @@ export function DiscoveryCard({ album, rating, onRatingChange, onSwipe }: Discov
     }
   }
 
-  const embedUrl = album.spotify_album_id
-    ? `https://open.spotify.com/embed/album/${album.spotify_album_id}?utm_source=generator&theme=0`
+  // Dalszintű beágyazás — a konkrét számot mutatja, nem az egész albumot
+  const embedUrl = track.spotify_track_id
+    ? `https://open.spotify.com/embed/track/${track.spotify_track_id}?utm_source=generator&theme=0`
+    : track.album.spotify_album_id
+    ? `https://open.spotify.com/embed/album/${track.album.spotify_album_id}?utm_source=generator&theme=0`
     : null
 
   return (
@@ -61,10 +64,10 @@ export function DiscoveryCard({ album, rating, onRatingChange, onSwipe }: Discov
         </motion.div>
 
         <div className="relative aspect-square w-full overflow-hidden rounded-[18px] bg-neutral-100 shadow-inner">
-          {album.cover_url ? (
+          {track.album.cover_url ? (
             <img
-              src={album.cover_url}
-              alt={`${album.artist.name} - ${album.title}`}
+              src={track.album.cover_url}
+              alt={`${track.artist.name} - ${track.album.title}`}
               className="h-full w-full object-cover"
             />
           ) : (
@@ -76,7 +79,7 @@ export function DiscoveryCard({ album, rating, onRatingChange, onSwipe }: Discov
           <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-xs text-white">
             <div className="flex max-w-[85%] items-center gap-1.5 truncate rounded-full border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur-md">
               <Disc3 className="h-3 w-3 shrink-0 text-[#FF8F68]" />
-              <span className="truncate text-[11px] font-medium">{album.title}</span>
+              <span className="truncate text-[11px] font-medium">{track.album.title}</span>
             </div>
           </div>
         </div>
@@ -84,16 +87,17 @@ export function DiscoveryCard({ album, rating, onRatingChange, onSwipe }: Discov
         <div className="flex items-start justify-between gap-2 px-0.5">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-bold uppercase tracking-tight text-[#FF5B37]">
-              {album.artist.name}
+              {track.artist.name}
             </p>
             <h3 className="truncate text-lg font-extrabold leading-tight tracking-tight text-neutral-900">
-              {album.title}
+              {track.title}
             </h3>
           </div>
         </div>
 
         {embedUrl ? (
           <iframe
+            key={embedUrl}
             src={embedUrl}
             width="100%"
             height="152"
