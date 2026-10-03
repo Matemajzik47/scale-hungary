@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { X, Copy, Check } from 'lucide-react'
+import QRCode from 'qrcode'
 
 interface QrCodeShareModalProps {
   isOpen: boolean
@@ -12,8 +13,21 @@ interface QrCodeShareModalProps {
 
 export function QrCodeShareModal({ isOpen, onClose, username }: QrCodeShareModalProps) {
   const [copied, setCopied] = useState(false)
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
 
   const profileUrl = typeof window !== 'undefined' ? `${window.location.origin}/u/${username}` : ''
+
+  // Valódi, beolvasható QR-kód generálása a profil linkből
+  useEffect(() => {
+    if (!isOpen || !profileUrl) return
+    QRCode.toDataURL(profileUrl, {
+      width: 320,
+      margin: 1,
+      color: { dark: '#171717', light: '#FFFFFF' },
+    })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(null))
+  }, [isOpen, profileUrl])
 
   function handleCopy() {
     navigator.clipboard?.writeText(profileUrl).catch(() => {})
@@ -57,21 +71,13 @@ export function QrCodeShareModal({ isOpen, onClose, username }: QrCodeShareModal
               </button>
             </div>
 
-            <div className="relative rounded-[22px] border border-neutral-200/70 bg-[#FAFAFA] p-3.5 shadow-inner">
-              <svg viewBox="0 0 200 200" className="h-44 w-44 drop-shadow-sm" fill="none">
-                <rect width="200" height="200" rx="16" fill="white" />
-                <rect x="18" y="18" width="50" height="50" rx="14" stroke="#1A1A1A" strokeWidth="6" />
-                <rect x="31" y="31" width="24" height="24" rx="8" fill="#FF5B37" />
-                <rect x="132" y="18" width="50" height="50" rx="14" stroke="#1A1A1A" strokeWidth="6" />
-                <rect x="145" y="31" width="24" height="24" rx="8" fill="#FF5B37" />
-                <rect x="18" y="132" width="50" height="50" rx="14" stroke="#1A1A1A" strokeWidth="6" />
-                <rect x="31" y="145" width="24" height="24" rx="8" fill="#FF5B37" />
-                <rect x="82" y="82" width="36" height="36" rx="10" fill="#171717" />
-                <rect x="89" y="93" width="3" height="14" rx="1.5" fill="#FF5B37" />
-                <rect x="95" y="88" width="3" height="24" rx="1.5" fill="#FFFFFF" />
-                <rect x="101" y="91" width="3" height="18" rx="1.5" fill="#FF8F68" />
-                <rect x="107" y="96" width="3" height="8" rx="1.5" fill="#FFFFFF" />
-              </svg>
+            <div className="relative flex h-[184px] w-[184px] items-center justify-center rounded-[22px] border border-neutral-200/70 bg-[#FAFAFA] p-3.5 shadow-inner">
+              {qrDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qrDataUrl} alt={`QR kód @${username} profiljához`} className="h-full w-full" />
+              ) : (
+                <span className="text-xs text-neutral-400">QR generálása...</span>
+              )}
             </div>
 
             <div className="flex flex-col items-center gap-1">
