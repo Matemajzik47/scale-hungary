@@ -26,6 +26,9 @@ export default function NavBar() {
         Scale
       </Link>
       <div className="flex items-center gap-4 text-sm">
+        <Link href="/discover" className="hover:underline">
+          Felfedezés
+        </Link>
         {user ? (
           <Link href="/profile" className="rounded-full bg-black px-4 py-2 text-white">
             Profilom
