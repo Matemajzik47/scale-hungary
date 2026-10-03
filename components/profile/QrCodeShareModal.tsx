@@ -88,8 +88,12 @@ export function QrCodeShareModal({ isOpen, onClose, username }: QrCodeShareModal
 
             <div className="relative flex h-[184px] w-[184px] items-center justify-center rounded-[22px] border border-neutral-200/70 bg-[#FAFAFA] shadow-inner">
               <div ref={qrContainerRef} aria-label={`QR kód @${username} profiljához`} />
-              <div className="pointer-events-none absolute flex h-9 w-9 items-center justify-center rounded-[10px] bg-[#171717] text-[11px] font-black tracking-tighter text-white shadow-md">
-                SC
+              <div className="pointer-events-none absolute flex h-9 w-9 items-center justify-center gap-[2.5px] rounded-[10px] bg-[#171717] shadow-md">
+                <span className="h-2 w-[2.5px] rounded-full bg-[#FF5B37]" />
+                <span className="h-4 w-[2.5px] rounded-full bg-white" />
+                <span className="h-3 w-[2.5px] rounded-full bg-[#FF8F68]" />
+                <span className="h-[18px] w-[2.5px] rounded-full bg-white" />
+                <span className="h-2.5 w-[2.5px] rounded-full bg-[#FF5B37]" />
               </div>
             </div>
 
