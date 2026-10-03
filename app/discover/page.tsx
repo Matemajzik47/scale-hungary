@@ -59,8 +59,10 @@ type AlbumWithTracksRow = {
 }
 
 export default function DiscoverPage() {
-  const [tracks, setTracks] = useState<DiscoverTrack[]>([])
-  const [currentIndex, setCurrentIndex] = useState(0)
+  // A "deck" egy sor: az első elem a mindenkori aktuális kártya.
+  // Jobbra húzás (rate-elés) → a dal véglegesen kikerül a sorból.
+  // Balra húzás (skip) → a dal a sor végére kerül, csak a kör végén jön elő újra.
+  const [deck, setDeck] = useState<DiscoverTrack[]>([])
   const [ratings, setRatings] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
@@ -144,7 +146,7 @@ export default function DiscoverPage() {
         }
       })
 
-      setTracks(mapped)
+      setDeck(mapped.filter((t) => t.userRating === null))
       setRatings(myRatings)
       setLoading(false)
     }
@@ -152,7 +154,7 @@ export default function DiscoverPage() {
     load()
   }, [])
 
-  const currentTrack = tracks[currentIndex]
+  const currentTrack = deck[0]
   const currentRating = currentTrack ? ratings[currentTrack.id] ?? 7.5 : 7.5
 
   const handleRatingChange = useCallback(
@@ -180,19 +182,31 @@ export default function DiscoverPage() {
     setTimeout(() => setSaveStatus(null), 1500)
   }
 
-  function handleNext() {
-    setCurrentIndex((prev) => (prev + 1) % tracks.length)
+  // "Tovább" / balra húzás: a dal a sor végére kerül, nem rate-elődik
+  function handleSkip() {
+    setDeck((prev) => (prev.length > 1 ? [...prev.slice(1), prev[0]] : prev))
   }
 
+  // "Előző": a sor visszafelé forgatása — az utoljára hátrakerült dal jön vissza elsőnek
   function handlePrev() {
-    setCurrentIndex((prev) => (prev - 1 + tracks.length) % tracks.length)
+    setDeck((prev) =>
+      prev.length > 1 ? [prev[prev.length - 1], ...prev.slice(0, -1)] : prev
+    )
+  }
+
+  // Jobbra húzás / Mentés gomb: rate-elés, majd a dal véglegesen kikerül a sorból
+  async function handleRateAndRemove() {
+    if (!currentTrack) return
+    await saveRating(currentTrack.id, currentRating)
+    setDeck((prev) => prev.slice(1))
   }
 
   async function handleSwipe(direction: 'left' | 'right') {
-    if (direction === 'right' && currentTrack) {
-      await saveRating(currentTrack.id, currentRating)
+    if (direction === 'right') {
+      await handleRateAndRemove()
+    } else {
+      handleSkip()
     }
-    handleNext()
   }
 
   if (loading) {
@@ -203,11 +217,11 @@ export default function DiscoverPage() {
     )
   }
 
-  if (tracks.length === 0) {
+  if (deck.length === 0) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-2 text-center text-neutral-500">
-        <p>Még nincs zene a katalógusban.</p>
-        <p className="text-sm">Futtasd le a katalógus-szinkronizációt először.</p>
+        <p>Minden friss dalt rate-eltél! 🎉</p>
+        <p className="text-sm">Gyere vissza, ha új kiadás kerül a katalógusba.</p>
       </div>
     )
   }
@@ -254,7 +268,7 @@ export default function DiscoverPage() {
 
           <button
             type="button"
-            onClick={() => saveRating(currentTrack.id, currentRating)}
+            onClick={handleRateAndRemove}
             className="rounded-full bg-black px-5 py-2 text-xs font-semibold text-white transition hover:bg-gray-800"
           >
             Mentés
@@ -262,7 +276,7 @@ export default function DiscoverPage() {
 
           <button
             type="button"
-            onClick={handleNext}
+            onClick={handleSkip}
             className="flex items-center gap-0.5 rounded-full p-1 transition-colors hover:bg-neutral-200/80 hover:text-neutral-700"
           >
             <span className="text-[11px] font-medium">Tovább</span>
