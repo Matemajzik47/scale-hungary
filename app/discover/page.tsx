@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { DiscoveryCard } from '@/components/discover/DiscoveryCard'
 import { CommunityBadge } from '@/components/discover/CommunityBadge'
 import { updateUserStats } from '@/lib/userStats'
+import { RequireAuthModal } from '@/components/RequireAuthModal'
 import type { DiscoverTrack } from '@/types/discover'
 
 type AlbumWithTracksRow = {
@@ -27,86 +28,135 @@ export default function DiscoverPage() {
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
+  const [showAuthModal, setShowAuthModal] = useState(false)
+
+  // Fisher–Yates shuffle — a régi katalógusból érkező fallback dalok
+  // teljesen véletlenszerű sorrendben kerüljenek a deckbe
+  function shuffle<T>(arr: T[]): T[] {
+    const copy = [...arr]
+    for (let i = copy.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[copy[i], copy[j]] = [copy[j], copy[i]]
+    }
+    return copy
+  }
+
+  /**
+   * Albumok (adott id-kra szűkítve, vagy mind) lekérése dalokkal, előadóval
+   * és a rating-ekkel együtt — DiscoverTrack listává alakítva.
+   */
+  async function fetchTracksForAlbums(
+    albumIds: string[] | null,
+    currentUserId: string | null
+  ): Promise<DiscoverTrack[]> {
+    let query = supabase
+      .from('albums')
+      .select('id, title, cover_url, spotify_album_id, artists(id, name), tracks(id, title, spotify_track_id)')
+
+    if (albumIds) {
+      query = query.in('id', albumIds.length > 0 ? albumIds : [''])
+    } else {
+      query = query.order('release_date', { ascending: false }).limit(15)
+    }
+
+    const { data: albumsData, error } = await query
+    if (error || !albumsData) return []
+
+    const flatTracks: {
+      id: string
+      title: string
+      spotify_track_id: string | null
+      album: { id: string; title: string; cover_url: string | null; spotify_album_id: string | null }
+      artist: { id: string; name: string }
+    }[] = []
+
+    for (const a of albumsData as unknown as AlbumWithTracksRow[]) {
+      const artist = { id: a.artists?.id ?? '', name: a.artists?.name ?? 'Ismeretlen előadó' }
+      const album = {
+        id: a.id,
+        title: a.title,
+        cover_url: a.cover_url,
+        spotify_album_id: a.spotify_album_id,
+      }
+      for (const t of a.tracks ?? []) {
+        flatTracks.push({
+          id: t.id,
+          title: t.title,
+          spotify_track_id: t.spotify_track_id,
+          album,
+          artist,
+        })
+      }
+    }
+
+    const trackIds = flatTracks.map((t) => t.id)
+
+    const { data: allRatings } = await supabase
+      .from('ratings')
+      .select('track_id, score, user_id')
+      .in('track_id', trackIds.length > 0 ? trackIds : [''])
+
+    const ratingsByTrack = new Map<string, number[]>()
+    const myRatings: Record<string, number> = {}
+
+    for (const r of allRatings ?? []) {
+      const list = ratingsByTrack.get(r.track_id) ?? []
+      list.push(Number(r.score))
+      ratingsByTrack.set(r.track_id, list)
+      if (currentUserId && r.user_id === currentUserId) {
+        myRatings[r.track_id] = Number(r.score)
+      }
+    }
+
+    return flatTracks.map((t) => {
+      const scores = ratingsByTrack.get(t.id) ?? []
+      const avg = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null
+      return {
+        ...t,
+        communityAverage: avg,
+        totalRatings: scores.length,
+        userRating: myRatings[t.id] ?? null,
+      }
+    })
+  }
 
   useEffect(() => {
     async function load() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      setUserId(user?.id ?? null)
+      const currentUserId = user?.id ?? null
+      setUserId(currentUserId)
 
-      // Albumok lekérése a hozzájuk tartozó dalokkal és előadóval együtt
-      const { data: albumsData, error: albumsError } = await supabase
-        .from('albums')
-        .select('id, title, cover_url, spotify_album_id, artists(id, name), tracks(id, title, spotify_track_id)')
-        .order('release_date', { ascending: false })
-        .limit(15)
+      // 1. Friss (legutóbbi 15 album) kiadások — elsődleges forrás
+      const recentTracks = await fetchTracksForAlbums(null, currentUserId)
+      const unratedRecent = recentTracks.filter((t) => t.userRating === null)
 
-      if (albumsError || !albumsData) {
-        setLoading(false)
-        return
-      }
-
-      // Albumok kilapítása dal-listává — minden dal saját kártya lesz a swipe-flow-ban
-      const flatTracks: {
-        id: string
-        title: string
-        spotify_track_id: string | null
-        album: { id: string; title: string; cover_url: string | null; spotify_album_id: string | null }
-        artist: { id: string; name: string }
-      }[] = []
-
-      for (const a of albumsData as unknown as AlbumWithTracksRow[]) {
-        const artist = { id: a.artists?.id ?? '', name: a.artists?.name ?? 'Ismeretlen előadó' }
-        const album = {
-          id: a.id,
-          title: a.title,
-          cover_url: a.cover_url,
-          spotify_album_id: a.spotify_album_id,
-        }
-        for (const t of a.tracks ?? []) {
-          flatTracks.push({
-            id: t.id,
-            title: t.title,
-            spotify_track_id: t.spotify_track_id,
-            album,
-            artist,
-          })
-        }
-      }
-
-      const trackIds = flatTracks.map((t) => t.id)
-
-      // Rating-ek lekérése az összes dalhoz, hogy kiszámoljuk a közösségi átlagot
-      const { data: allRatings } = await supabase
-        .from('ratings')
-        .select('track_id, score, user_id')
-        .in('track_id', trackIds.length > 0 ? trackIds : [''])
-
-      const ratingsByTrack = new Map<string, number[]>()
+      let finalDeck = unratedRecent
       const myRatings: Record<string, number> = {}
+      for (const t of recentTracks) {
+        if (t.userRating !== null) myRatings[t.id] = t.userRating
+      }
 
-      for (const r of allRatings ?? []) {
-        const list = ratingsByTrack.get(r.track_id) ?? []
-        list.push(Number(r.score))
-        ratingsByTrack.set(r.track_id, list)
-        if (user && r.user_id === user.id) {
-          myRatings[r.track_id] = Number(r.score)
+      // 2. Fallback: ha a friss kiadásokból kifogyott a még nem ratelt anyag,
+      // hozzunk be véletlenszerűen régi, még nem ratelt dalokat is a teljes
+      // katalógusból, hogy sose fogyjon ki a deck
+      if (unratedRecent.length === 0) {
+        const { data: allAlbumIdsData } = await supabase.from('albums').select('id')
+        const allAlbumIds = (allAlbumIdsData ?? []).map((a) => a.id)
+
+        if (allAlbumIds.length > 0) {
+          const allTracks = await fetchTracksForAlbums(allAlbumIds, currentUserId)
+          const unratedAll = allTracks.filter((t) => t.userRating === null)
+          finalDeck = shuffle(unratedAll)
+
+          for (const t of allTracks) {
+            if (t.userRating !== null) myRatings[t.id] = t.userRating
+          }
         }
       }
 
-      const mapped: DiscoverTrack[] = flatTracks.map((t) => {
-        const scores = ratingsByTrack.get(t.id) ?? []
-        const avg = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null
-        return {
-          ...t,
-          communityAverage: avg,
-          totalRatings: scores.length,
-          userRating: myRatings[t.id] ?? null,
-        }
-      })
-
-      setDeck(mapped.filter((t) => t.userRating === null))
+      setDeck(finalDeck)
       setRatings(myRatings)
       setLoading(false)
     }
@@ -125,11 +175,10 @@ export default function DiscoverPage() {
     [currentTrack]
   )
 
-  async function saveRating(trackId: string, score: number) {
-    if (!userId) {
-      setSaveStatus('Jelentkezz be a rate-eléshez!')
-      return
-    }
+  // Igaz, ha a mentés sikerült — a hívó csak ekkor veszi ki a dalt a sorból
+  async function saveRating(trackId: string, score: number): Promise<boolean> {
+    if (!userId) return false
+
     const { error } = await supabase
       .from('ratings')
       .upsert({ user_id: userId, track_id: trackId, score }, { onConflict: 'user_id,track_id' })
@@ -140,6 +189,7 @@ export default function DiscoverPage() {
 
     setSaveStatus(error ? 'Hiba a mentéskor' : 'Mentve!')
     setTimeout(() => setSaveStatus(null), 1500)
+    return !error
   }
 
   // "Tovább" / balra húzás: a dal a sor végére kerül, nem rate-elődik
@@ -155,10 +205,16 @@ export default function DiscoverPage() {
   }
 
   // Jobbra húzás / Mentés gomb: rate-elés, majd a dal véglegesen kikerül a sorból
+  // Kijelentkezve a dal marad a helyén (a vendég tovább próbálgathatja),
+  // és felugrik a bejelentkezési popup.
   async function handleRateAndRemove() {
     if (!currentTrack) return
-    await saveRating(currentTrack.id, currentRating)
-    setDeck((prev) => prev.slice(1))
+    if (!userId) {
+      setShowAuthModal(true)
+      return
+    }
+    const ok = await saveRating(currentTrack.id, currentRating)
+    if (ok) setDeck((prev) => prev.slice(1))
   }
 
   async function handleSwipe(direction: 'left' | 'right') {
@@ -180,7 +236,7 @@ export default function DiscoverPage() {
   if (deck.length === 0) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-2 text-center text-neutral-500">
-        <p>Minden friss dalt rate-eltél! 🎉</p>
+        <p>Az egész katalógust rate-elted! 🎉</p>
         <p className="text-sm">Gyere vissza, ha új kiadás kerül a katalógusba.</p>
       </div>
     )
@@ -244,6 +300,12 @@ export default function DiscoverPage() {
           </button>
         </div>
       </div>
+
+      <RequireAuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        message="A dal értékeléséhez jelentkezz be, vagy hozz létre egy ingyenes Scale fiókot. Addig nyugodtan hallgass bele és próbálgasd a csúszkát!"
+      />
     </div>
   )
 }
