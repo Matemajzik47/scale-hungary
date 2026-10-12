@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { Star, Music } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { RequireAuthModal } from '@/components/RequireAuthModal'
 
 type RatingRow = {
   score: number
@@ -47,6 +48,7 @@ function formatRatedAt(iso: string) {
 export default function RatedPage() {
   const [items, setItems] = useState<RatedItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [loggedOut, setLoggedOut] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -55,6 +57,7 @@ export default function RatedPage() {
       } = await supabase.auth.getUser()
 
       if (!user) {
+        setLoggedOut(true)
         setLoading(false)
         return
       }
@@ -222,6 +225,11 @@ export default function RatedPage() {
           ))}
         </div>
       )}
+
+      <RequireAuthModal
+        isOpen={loggedOut}
+        message="Az értékelt dalaid megtekintéséhez jelentkezz be, vagy hozz létre egy Scale fiókot."
+      />
     </div>
   )
 }

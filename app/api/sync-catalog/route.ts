@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
   fetchRecentHungarianReleases,
@@ -26,6 +26,9 @@ import { getIsoWeekString } from '@/lib/week'
  *    legújabbtól a legrégebbi felé (lásd BACKFILL_RANGES lent), hogy a
  *    frissebb évek zenéje mindig előbb kerüljön be, mint a nagyon régi.
  */
+
+// A háttérben futó szinkronnak is legyen elég ideje (másodperc)
+export const maxDuration = 300
 
 const BACKFILL_PAGE_SIZE = 40
 
@@ -209,24 +212,47 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const summary = createSummary()
+  // A teljes szinkron ~45 mp-ig tart, a külső cron-szolgáltatások (pl. a
+  // cron-job.org ingyenes csomagja) viszont ~30 mp után időtúllépést jeleznek.
+  // Ezért alapból azonnal válaszolunk, a tényleges munka a válasz után, a
+  // háttérben fut tovább (after). Fejlesztéskor a ?wait=1 paraméterrel
+  // megvárható a teljes futás és az eredmény-összegzés.
+  const waitForResult = request.nextUrl.searchParams.get('wait') === '1'
 
-  try {
-    // 1. Friss (elmúlt 180 nap) kiadások
-    const recentReleases = await fetchRecentHungarianReleases(180, 25)
-    for (const release of recentReleases) {
-      await processRelease(release, summary)
+  if (waitForResult) {
+    const summary = createSummary()
+    try {
+      await runSync(summary)
+      return NextResponse.json({ success: true, summary })
+    } catch (err) {
+      return NextResponse.json(
+        { success: false, error: errorMessage(err), summary },
+        { status: 500 }
+      )
     }
-
-    // 2. Archív backfill — egy adagnyi régi kiadás a legújabb dátumsávtól
-    // kezdve (ld. BACKFILL_RANGES), ha még nem végeztünk
-    await runBackfillBatch(summary)
-
-    return NextResponse.json({ success: true, summary })
-  } catch (err) {
-    return NextResponse.json(
-      { success: false, error: errorMessage(err), summary },
-      { status: 500 }
-    )
   }
+
+  after(async () => {
+    const summary = createSummary()
+    try {
+      await runSync(summary)
+      console.log('[sync-catalog] kész', JSON.stringify(summary))
+    } catch (err) {
+      console.error('[sync-catalog] hiba', errorMessage(err), JSON.stringify(summary))
+    }
+  })
+
+  return NextResponse.json({ success: true, started: true })
+}
+
+async function runSync(summary: SyncSummary) {
+  // 1. Friss (elmúlt 180 nap) kiadások
+  const recentReleases = await fetchRecentHungarianReleases(180, 25)
+  for (const release of recentReleases) {
+    await processRelease(release, summary)
+  }
+
+  // 2. Archív backfill — egy adagnyi régi kiadás a legújabb dátumsávtól
+  // kezdve (ld. BACKFILL_RANGES), ha még nem végeztünk
+  await runBackfillBatch(summary)
 }
