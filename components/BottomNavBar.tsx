@@ -16,7 +16,7 @@ export default function BottomNavBar() {
 
   // Auth oldalakon és a főoldalon ne jelenjen meg az alsó navigáció
   const hiddenOn = ['/login', '/register']
-  if (hiddenOn.includes(pathname) || pathname === '/') return null
+  if (hiddenOn.includes(pathname) || pathname.startsWith('/auth') || pathname === '/') return null
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-20 flex items-center justify-around border-t border-neutral-200/70 bg-white/95 px-4 py-2 backdrop-blur-md sm:sticky">
