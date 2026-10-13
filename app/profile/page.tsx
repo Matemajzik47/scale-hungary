@@ -29,12 +29,17 @@ export default function ProfilePage() {
       }
 
       const profileData = await loadProfileDataByUserId(user.id)
+      if (!profileData) {
+        // Be van jelentkezve, de még nincs profilja (pl. első Google belépés)
+        router.replace('/auth/username')
+        return
+      }
       setData(profileData)
       setLoading(false)
     }
 
     load()
-  }, [])
+  }, [router])
 
   async function handleLogout() {
     await supabase.auth.signOut()
