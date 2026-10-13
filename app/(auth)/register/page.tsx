@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -86,6 +87,12 @@ export default function RegisterPage() {
             {loading ? 'Regisztráció...' : 'Regisztráció'}
           </button>
         </form>
+        <div className="my-5 flex items-center gap-3 text-xs text-gray-400">
+          <span className="h-px flex-1 bg-gray-200" />
+          vagy
+          <span className="h-px flex-1 bg-gray-200" />
+        </div>
+        <GoogleSignInButton label="Regisztráció Google-lal" />
         <p className="mt-4 text-sm text-gray-600">
           Már van fiókod?{' '}
           <a href="/login" className="underline">
