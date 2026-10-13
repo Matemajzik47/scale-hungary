@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -61,6 +62,12 @@ export default function LoginPage() {
             {loading ? 'Bejelentkezés...' : 'Bejelentkezés'}
           </button>
         </form>
+        <div className="my-5 flex items-center gap-3 text-xs text-gray-400">
+          <span className="h-px flex-1 bg-gray-200" />
+          vagy
+          <span className="h-px flex-1 bg-gray-200" />
+        </div>
+        <GoogleSignInButton />
         <p className="mt-4 text-sm text-gray-600">
           Még nincs fiókod?{' '}
           <a href="/register" className="underline">
