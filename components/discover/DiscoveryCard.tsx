@@ -1,6 +1,6 @@
 'use client'
 
-import { motion, useMotionValue, useTransform, type PanInfo } from 'motion/react'
+import { motion, useDragControls, useMotionValue, useTransform, type PanInfo } from 'motion/react'
 import { Disc3, Sparkles, ArrowRight } from 'lucide-react'
 import { RatingControl } from './RatingControl'
 import type { DiscoverTrack } from '@/types/discover'
@@ -14,6 +14,9 @@ interface DiscoveryCardProps {
 
 export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: DiscoveryCardProps) {
   const x = useMotionValue(0)
+  // A húzás (swipe) csak a borítóról és a címsorból indítható, így a csúszka
+  // és a lejátszó használata közben a dal nem pörög el véletlenül.
+  const dragControls = useDragControls()
   const rotate = useTransform(x, [-200, 200], [-10, 10])
   const opacity = useTransform(x, [-250, -150, 0, 150, 250], [0.4, 0.9, 1, 0.9, 0.4])
   const likeOpacity = useTransform(x, [20, 120], [0, 1])
@@ -42,10 +45,12 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
       <motion.div
         style={{ x, rotate, opacity }}
         drag="x"
+        dragListener={false}
+        dragControls={dragControls}
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.7}
         onDragEnd={handleDragEnd}
-        className="relative flex h-full cursor-grab flex-col gap-2.5 overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white p-3 shadow-[0_12px_36px_rgba(0,0,0,0.07)] active:cursor-grabbing"
+        className="relative flex h-full flex-col gap-2.5 overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white p-3 shadow-[0_12px_36px_rgba(0,0,0,0.07)]"
       >
         <motion.div
           style={{ opacity: likeOpacity }}
@@ -65,7 +70,10 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
 
         {/* A borító a kártyában megmaradó magassághoz igazodik (négyzet marad), így
             a teljes kártya kisebb telefonokon is elfér görgetés nélkül */}
-        <div className="flex min-h-0 flex-1 items-center justify-center">
+        <div
+          onPointerDown={(e) => dragControls.start(e)}
+          className="flex min-h-0 flex-1 cursor-grab touch-pan-y items-center justify-center active:cursor-grabbing"
+        >
         <div className="relative aspect-square h-full max-w-full overflow-hidden rounded-[18px] bg-neutral-100 shadow-inner">
           {track.album.cover_url ? (
             <img
@@ -88,7 +96,10 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
         </div>
         </div>
 
-        <div className="flex shrink-0 items-start justify-between gap-2 px-0.5">
+        <div
+          onPointerDown={(e) => dragControls.start(e)}
+          className="flex shrink-0 cursor-grab touch-pan-y items-start justify-between gap-2 px-0.5 active:cursor-grabbing"
+        >
           <div className="min-w-0 flex-1">
             <p className="truncate text-[11px] font-bold uppercase tracking-tight text-[#FF5B37]">
               {track.artist.name}
