@@ -15,6 +15,10 @@ interface MusicIdCardProps {
   joinedLabel?: string
   bgUrl?: string | null
   bgPos?: CardBgPos
+  // false: nem követi a kurzort (pl. a főoldali példakártyán)
+  interactive?: boolean
+  // Időnként végigfutó átfénylés
+  autoSheen?: boolean
 }
 
 // A felhasználónévből képzett, mindig ugyanolyan "ízlés-hullámforma" és ID szám
@@ -46,6 +50,8 @@ export function MusicIdCard({
   joinedLabel,
   bgUrl,
   bgPos = DEFAULT_BG_POS,
+  interactive = true,
+  autoSheen = false,
 }: MusicIdCardProps) {
   const tiltRef = useRef<HTMLDivElement>(null)
   const wave = waveFor(username)
@@ -73,8 +79,8 @@ export function MusicIdCard({
   return (
     <section
       aria-label="Music Taste ID kártya"
-      onPointerMove={onMove}
-      onPointerLeave={onLeave}
+      onPointerMove={interactive ? onMove : undefined}
+      onPointerLeave={interactive ? onLeave : undefined}
       className="[perspective:900px]"
     >
       <div
@@ -94,6 +100,10 @@ export function MusicIdCard({
               'linear-gradient(115deg, transparent calc(var(--gx) - 18%), rgba(255,255,255,0.28) var(--gx), transparent calc(var(--gx) + 18%))',
           }}
         />
+
+        {autoSheen && (
+          <div className="card-sheen pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-white/30 to-transparent mix-blend-overlay" />
+        )}
 
         <div className="relative z-10 flex min-h-[196px] flex-col justify-between gap-3">
           <div className="flex items-center justify-between">
