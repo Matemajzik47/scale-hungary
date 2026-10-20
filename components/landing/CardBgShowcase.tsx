@@ -58,7 +58,7 @@ export function CardBgShowcase({ covers }: { covers: string[] }) {
         <Layer item={base} covers={covers} />
       </div>
       {!reduce && n > 1 && (
-        <div key={tick} className="bg-wipe absolute inset-0 overflow-hidden">
+        <div key={tick} className="bg-wipe absolute inset-0 overflow-hidden bg-[#101114]">
           <Layer item={next} covers={covers} />
         </div>
       )}

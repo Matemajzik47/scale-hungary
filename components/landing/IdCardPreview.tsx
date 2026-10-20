@@ -50,20 +50,27 @@ export function IdCardPreview({ covers }: { covers: string[] }) {
         <div className="relative aspect-square w-[86%] [transform-style:preserve-3d] [transform:rotateX(72deg)]">
           {/* Tányér alja: vastagság + narancs fény */}
           <div className="disc-glow absolute inset-0 rounded-full bg-[#0B0B0D] [transform:translateZ(-16px)]" />
-          {/* Lemez: barázdák + fix fényív */}
+          {/* Az egész lemez együtt forog a közepe körül (címkével együtt) */}
           <div
-            className="absolute inset-0 rounded-full border-2 border-[#FF5B37]"
+            className="vinyl-spin absolute inset-0 flex items-center justify-center rounded-full border-2 border-[#FF5B37]"
+            style={{
+              background: 'repeating-radial-gradient(circle at center, #0c0c0e 0 2px, #1a1b1f 2px 3px)',
+            }}
+          >
+            {/* Címke */}
+            <div className="relative flex aspect-square w-[34%] items-center justify-center rounded-full bg-gradient-to-br from-[#FF5B37] to-[#FF8F68] shadow-[inset_0_0_0_3px_rgba(0,0,0,0.25)]">
+              <ScaleLogo className="h-[34%] w-[34%] !ring-0" />
+              <span className="absolute left-[16%] top-1/2 h-[6%] w-[6%] -translate-y-1/2 rounded-full bg-white/80" />
+            </div>
+          </div>
+          {/* Fix fényív: nem forog a lemezzel, így a fény a helyén marad */}
+          <div
+            className="absolute inset-0 rounded-full"
             style={{
               background:
-                'conic-gradient(from 30deg, transparent 0 18%, rgba(255,255,255,0.16) 24%, transparent 32% 68%, rgba(255,255,255,0.16) 74%, transparent 82%), repeating-radial-gradient(circle at center, #0c0c0e 0 2px, #1a1b1f 2px 3px)',
+                'conic-gradient(from 30deg, transparent 0 18%, rgba(255,255,255,0.16) 24%, transparent 32% 68%, rgba(255,255,255,0.16) 74%, transparent 82%)',
             }}
           />
-          {/* Forgó címke */}
-          <div className="vinyl-spin absolute left-1/2 top-1/2 flex aspect-square w-[34%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-[#FF5B37] to-[#FF8F68] shadow-[inset_0_0_0_3px_rgba(0,0,0,0.25)]">
-            <ScaleLogo className="h-[34%] w-[34%] !ring-0" />
-            <span className="absolute left-[16%] top-1/2 h-[6%] w-[6%] -translate-y-1/2 rounded-full bg-white/80" />
-            <span className="absolute h-[7%] w-[7%] rounded-full bg-[#0B0B0D]" style={{ right: '14%' }} />
-          </div>
         </div>
         {/* A kártya vetett fénye a lemezen */}
         <div className="card-shadow absolute inset-x-[26%] top-[34px] h-[30px] rounded-[50%] bg-[#FF5B37]/40 blur-xl" />
