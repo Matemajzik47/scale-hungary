@@ -101,6 +101,43 @@ body {
   }
 }
 
+.sheen-run {
+  animation: sheen-run 3.2s ease-in-out both;
+}
+
+.bg-wipe {
+  animation: bg-wipe 3.2s ease-in-out both;
+}
+
+/* A képváltás széle együtt halad a fénycsík közepével (azonos időzítés) */
+@keyframes sheen-run {
+  from {
+    transform: translateX(0) skewX(-12deg);
+  }
+  to {
+    transform: translateX(420%) skewX(-12deg);
+  }
+}
+
+@keyframes bg-wipe {
+  from {
+    clip-path: polygon(0 0, -17% 0, -29% 100%, 0 100%);
+  }
+  to {
+    clip-path: polygon(0 0, 126% 0, 114% 100%, 0 100%);
+  }
+}
+
+.vinyl-spin {
+  animation: vinyl-spin 5s linear infinite;
+}
+
+@keyframes vinyl-spin {
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
 .card-float {
   animation: card-float 6s ease-in-out infinite;
 }
@@ -121,6 +158,9 @@ body {
   .marquee-track,
   .live-dot,
   .card-float,
+  .vinyl-spin,
+  .sheen-run,
+  .bg-wipe,
   .card-shadow,
   .disc-glow,
   .card-sheen {

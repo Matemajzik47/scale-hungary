@@ -3,12 +3,14 @@
 import { useRef } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
+import { ScaleLogo } from '@/components/ScaleLogo'
+import { CardBgShowcase } from '@/components/landing/CardBgShowcase'
 
 // Példa Music ID kártya a kezdőoldal hero-jához (nem valódi felhasználó). Ugyanazt a kártyát
 // használja, mint a profil, így a főoldalon is pontosan ilyet kapsz.
 // 3D-ben lebeg egy mágneskorong fölött; egérrel enyhén követi a kurzort.
 
-export function IdCardPreview({ bgUrl }: { bgUrl?: string | null }) {
+export function IdCardPreview({ covers }: { covers: string[] }) {
   const tiltRef = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
 
@@ -37,20 +39,34 @@ export function IdCardPreview({ bgUrl }: { bgUrl?: string | null }) {
       onPointerLeave={onLeave}
       className="relative mx-auto h-[365px] w-full max-w-[400px] [perspective:1200px]"
     >
-      {/* Mágneskorong: több rétegű, narancs peremmel és fénnyel */}
+      {/* Bakelitlemez: a korong lapos, a közepén forgó címke van */}
       <motion.div
         initial={reduce ? false : { opacity: 0, scale: 0.8, y: 24 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.7, ease: 'easeOut' }}
-        className="pointer-events-none absolute inset-x-0 bottom-2 h-[110px]"
+        className="pointer-events-none absolute inset-x-0 bottom-2 flex h-[110px] items-center justify-center [perspective:900px]"
         aria-hidden="true"
       >
-        <div className="absolute inset-x-[2%] bottom-0 h-[84px] rounded-[50%] bg-[#0B0B0D] shadow-[0_26px_40px_rgba(17,18,20,0.28)]" />
-        <div className="absolute inset-x-[2%] bottom-[10px] h-[84px] rounded-[50%] border border-[#33343A] bg-gradient-to-b from-[#2A2B31] to-[#17181B]" />
-        <div className="disc-glow absolute inset-x-[9%] bottom-[18px] h-[64px] rounded-[50%] border-2 border-[#FF5B37] bg-[#121316]" />
-        <div className="absolute inset-x-[24%] bottom-[28px] h-[42px] rounded-[50%] bg-gradient-to-b from-[#1E1F24] to-[#0B0B0D] shadow-[inset_0_2px_10px_rgba(255,91,55,0.35)]" />
-        {/* A kártya vetett árnyéka a koronggal együtt "lélegzik" */}
-        <div className="card-shadow absolute inset-x-[26%] bottom-[34px] h-[30px] rounded-[50%] bg-[#FF5B37]/40 blur-xl" />
+        <div className="relative aspect-square w-[86%] [transform-style:preserve-3d] [transform:rotateX(72deg)]">
+          {/* Tányér alja: vastagság + narancs fény */}
+          <div className="disc-glow absolute inset-0 rounded-full bg-[#0B0B0D] [transform:translateZ(-16px)]" />
+          {/* Lemez: barázdák + fix fényív */}
+          <div
+            className="absolute inset-0 rounded-full border-2 border-[#FF5B37]"
+            style={{
+              background:
+                'conic-gradient(from 30deg, transparent 0 18%, rgba(255,255,255,0.16) 24%, transparent 32% 68%, rgba(255,255,255,0.16) 74%, transparent 82%), repeating-radial-gradient(circle at center, #0c0c0e 0 2px, #1a1b1f 2px 3px)',
+            }}
+          />
+          {/* Forgó címke */}
+          <div className="vinyl-spin absolute left-1/2 top-1/2 flex aspect-square w-[34%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-[#FF5B37] to-[#FF8F68] shadow-[inset_0_0_0_3px_rgba(0,0,0,0.25)]">
+            <ScaleLogo className="h-[34%] w-[34%] !ring-0" />
+            <span className="absolute left-[16%] top-1/2 h-[6%] w-[6%] -translate-y-1/2 rounded-full bg-white/80" />
+            <span className="absolute h-[7%] w-[7%] rounded-full bg-[#0B0B0D]" style={{ right: '14%' }} />
+          </div>
+        </div>
+        {/* A kártya vetett fénye a lemezen */}
+        <div className="card-shadow absolute inset-x-[26%] top-[34px] h-[30px] rounded-[50%] bg-[#FF5B37]/40 blur-xl" />
       </motion.div>
 
       {/* Lebegő kártya: a korong után "leereszkedik", majd lebeg */}
@@ -76,9 +92,8 @@ export function IdCardPreview({ bgUrl }: { bgUrl?: string | null }) {
             curatorScore={8.1}
             totalRatings={312}
             streak={21}
-            bgUrl={bgUrl}
+            bgSlot={<CardBgShowcase covers={covers} />}
             interactive={false}
-            autoSheen
           />
         </div>
       </div>

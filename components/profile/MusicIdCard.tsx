@@ -3,6 +3,7 @@
 import { useRef } from 'react'
 import { ShieldCheck, Flame } from 'lucide-react'
 import { ScaleLogo } from '@/components/ScaleLogo'
+import type { ReactNode } from 'react'
 import { CardQr } from '@/components/profile/CardQr'
 import { CardBgImage, DEFAULT_BG_POS, type CardBgPos } from '@/components/profile/CardBgImage'
 
@@ -15,6 +16,8 @@ interface MusicIdCardProps {
   joinedLabel?: string
   bgUrl?: string | null
   bgPos?: CardBgPos
+  // Saját háttér (pl. borítómozaik) a feltöltött kép helyett
+  bgSlot?: ReactNode
   // false: nem követi a kurzort (pl. a főoldali példakártyán)
   interactive?: boolean
   // Időnként végigfutó átfénylés
@@ -50,6 +53,7 @@ export function MusicIdCard({
   joinedLabel,
   bgUrl,
   bgPos = DEFAULT_BG_POS,
+  bgSlot,
   interactive = true,
   autoSheen = false,
 }: MusicIdCardProps) {
@@ -89,7 +93,7 @@ export function MusicIdCard({
         className="relative min-h-[236px] w-full overflow-hidden rounded-[24px] border border-neutral-700/70 bg-[#101114] p-5 text-white shadow-[0_18px_40px_rgba(0,0,0,0.3)] transition-transform duration-200 ease-out [transform:rotateY(var(--ry))_rotateX(var(--rx))]"
       >
         {/* Hátoldal: a felhasználó saját képe, halványan */}
-        {bgUrl && <CardBgImage url={bgUrl} pos={bgPos} className="opacity-80" />}
+        {bgSlot ?? (bgUrl && <CardBgImage url={bgUrl} pos={bgPos} className="opacity-80" />)}
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#1E1F24]/55 via-[#14151A]/40 to-[#0B0B0D]/70" />
         <div className="pointer-events-none absolute -bottom-12 -right-10 h-48 w-48 rounded-full bg-[#FF5B37] opacity-25 blur-3xl" />
         {/* Holografikus fénycsík, a kurzorral mozog */}

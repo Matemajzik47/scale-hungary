@@ -148,7 +148,7 @@ export default async function Home() {
             </div>
           </Reveal>
           <div className="grid place-items-center p-2">
-            <IdCardPreview bgUrl={covers[0] ?? null} />
+            <IdCardPreview covers={covers.slice(0, 12)} />
           </div>
         </header>
 
