@@ -3,6 +3,8 @@
 import { useRef } from 'react'
 import { ShieldCheck, Flame } from 'lucide-react'
 import { ScaleLogo } from '@/components/ScaleLogo'
+import { CardQr } from '@/components/profile/CardQr'
+import { CardBgImage, DEFAULT_BG_POS, type CardBgPos } from '@/components/profile/CardBgImage'
 
 interface MusicIdCardProps {
   username: string
@@ -10,8 +12,9 @@ interface MusicIdCardProps {
   curatorScore: number | null
   totalRatings: number
   streak: number
-  joinedLabel: string
+  joinedLabel?: string
   bgUrl?: string | null
+  bgPos?: CardBgPos
 }
 
 // A felhasználónévből képzett, mindig ugyanolyan "ízlés-hullámforma" és ID szám
@@ -27,7 +30,7 @@ function hashOf(text: string): number {
 function waveFor(username: string): number[] {
   let seed = hashOf(username) || 1
   const out: number[] = []
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 24; i++) {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff
     out.push(6 + (seed % 100) * 0.26)
   }
@@ -42,6 +45,7 @@ export function MusicIdCard({
   streak,
   joinedLabel,
   bgUrl,
+  bgPos = DEFAULT_BG_POS,
 }: MusicIdCardProps) {
   const tiltRef = useRef<HTMLDivElement>(null)
   const wave = waveFor(username)
@@ -79,15 +83,8 @@ export function MusicIdCard({
         className="relative min-h-[236px] w-full overflow-hidden rounded-[24px] border border-neutral-700/70 bg-[#101114] p-5 text-white shadow-[0_18px_40px_rgba(0,0,0,0.3)] transition-transform duration-200 ease-out [transform:rotateY(var(--ry))_rotateX(var(--rx))]"
       >
         {/* Hátoldal: a felhasználó saját képe, halványan */}
-        {bgUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={bgUrl}
-            alt=""
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-45"
-          />
-        )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#1E1F24]/85 via-[#14151A]/75 to-[#0B0B0D]/90" />
+        {bgUrl && <CardBgImage url={bgUrl} pos={bgPos} className="opacity-80" />}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#1E1F24]/55 via-[#14151A]/40 to-[#0B0B0D]/70" />
         <div className="pointer-events-none absolute -bottom-12 -right-10 h-48 w-48 rounded-full bg-[#FF5B37] opacity-25 blur-3xl" />
         {/* Holografikus fénycsík, a kurzorral mozog */}
         <div
@@ -112,22 +109,25 @@ export function MusicIdCard({
             </span>
           </div>
 
-          <div>
-            <div className="truncate font-[family-name:var(--font-display)] text-[26px] font-bold leading-none tracking-tight drop-shadow">
-              @{username}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1 pt-1">
+              <div className="truncate font-[family-name:var(--font-display)] text-[24px] font-bold leading-none tracking-tight drop-shadow">
+                @{username}
+              </div>
+              <div className="mt-1.5 font-mono text-[10px] tracking-[0.14em] text-neutral-200">
+                ID № {idNumber}
+              </div>
+              <div className="mt-3 flex h-[22px] items-center gap-[3px]" aria-hidden="true">
+                {wave.map((h, i) => (
+                  <span
+                    key={i}
+                    style={{ height: h }}
+                    className={`w-[3px] rounded-sm ${i % 4 === 3 ? 'bg-white' : 'bg-[#FF5B37]'}`}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="mt-1.5 font-mono text-[10px] tracking-[0.14em] text-neutral-300">
-              ID № {idNumber} · TAG {joinedLabel.toUpperCase()}
-            </div>
-            <div className="mt-3 flex h-[22px] items-center gap-[3px]" aria-hidden="true">
-              {wave.map((h, i) => (
-                <span
-                  key={i}
-                  style={{ height: h }}
-                  className={`w-[3px] rounded-sm ${i % 4 === 3 ? 'bg-white' : 'bg-[#FF5B37]'}`}
-                />
-              ))}
-            </div>
+            <CardQr username={username} />
           </div>
 
           <div className="flex items-end justify-between border-t border-white/15 pt-3">

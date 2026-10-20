@@ -6,6 +6,9 @@ export interface Profile {
   username: string
   created_at: string
   card_bg_url?: string | null
+  card_bg_x?: number | null
+  card_bg_y?: number | null
+  card_bg_zoom?: number | null
 }
 
 export interface Artist {

@@ -6,13 +6,15 @@ import { getTierForRatings } from '@/lib/tiers'
 import { CardBackgroundButton } from '@/components/profile/CardBackgroundButton'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
 import type { ProfileData } from '@/lib/profileData'
+import type { Profile } from '@/types/database'
+import { posFromProfile } from '@/components/profile/CardBgImage'
 
 interface ProfileDisplayProps {
   data: ProfileData
   // A fejléc és az ID kártya közé kerülő rész (követés, ízlés-egyezés)
   socialSlot?: ReactNode
   // Ha meg van adva, a kártya háttérképe szerkeszthető (csak a saját profilon)
-  onCardBgChange?: (url: string | null) => void
+  onCardBgChange?: (patch: Partial<Profile>) => void
 }
 
 export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisplayProps) {
@@ -57,11 +59,13 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
         streak={stats.current_streak ?? 0}
         joinedLabel={joinedLabel}
         bgUrl={profile.card_bg_url}
+        bgPos={posFromProfile(profile)}
       />
       {onCardBgChange && (
         <CardBackgroundButton
           userId={profile.id}
-          hasImage={Boolean(profile.card_bg_url)}
+          currentUrl={profile.card_bg_url ?? null}
+          currentPos={posFromProfile(profile)}
           onChange={onCardBgChange}
         />
       )}
