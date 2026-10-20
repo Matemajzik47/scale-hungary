@@ -243,9 +243,11 @@ export default function DiscoverPage() {
     )
   }
 
+  // Az oldal pontosan a képernyő magasságához igazodik (a fejléc és az alsó menü
+  // levonásával), hogy a teljes felfedezés görgetés nélkül elférjen telefonon is.
   return (
-    <div className="flex min-h-[80vh] flex-col items-center justify-between px-4 py-6">
-      <div className="relative flex w-full flex-1 items-center justify-center">
+    <div className="mx-auto flex h-[calc(100dvh-8.5rem)] w-full max-w-[420px] flex-col items-center gap-2 px-4 pb-1 pt-2">
+      <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentTrack.id}
@@ -253,7 +255,7 @@ export default function DiscoverPage() {
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.94, opacity: 0, y: -8 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="w-full"
+            className="h-full w-full"
           >
             <DiscoveryCard
               track={currentTrack}
@@ -265,20 +267,23 @@ export default function DiscoverPage() {
         </AnimatePresence>
       </div>
 
-      <div className="mt-4 flex w-full max-w-[380px] flex-col items-center gap-3">
-        {saveStatus && <p className="text-xs font-medium text-[#FF5B37]">{saveStatus}</p>}
-
-        <CommunityBadge
-          score={currentTrack.communityAverage}
-          totalRatings={currentTrack.totalRatings}
-        />
-
-        <Link
-          href={`/track/${currentTrack.id}`}
-          className="text-[11px] font-semibold text-neutral-400 underline-offset-2 transition hover:text-neutral-700 hover:underline"
-        >
-          Dal részletei és az album többi dala
-        </Link>
+      <div className="flex w-full max-w-[380px] shrink-0 flex-col items-center gap-1.5">
+        <div className="flex w-full items-center justify-between gap-2">
+          <CommunityBadge
+            score={currentTrack.communityAverage}
+            totalRatings={currentTrack.totalRatings}
+          />
+          {saveStatus ? (
+            <span className="text-[11px] font-semibold text-[#FF5B37]">{saveStatus}</span>
+          ) : (
+            <Link
+              href={`/track/${currentTrack.id}`}
+              className="shrink-0 text-[11px] font-semibold text-neutral-400 underline-offset-2 transition hover:text-neutral-700 hover:underline"
+            >
+              Részletek ›
+            </Link>
+          )}
+        </div>
 
         <div className="flex w-full items-center justify-between px-2 text-neutral-400">
           <button

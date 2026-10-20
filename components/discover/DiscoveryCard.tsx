@@ -35,9 +35,9 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
     : null
 
   return (
-    <div className="relative mx-auto w-full max-w-[380px] select-none">
-      <div className="absolute left-3 right-3 top-2 -z-10 h-[500px] scale-[0.96] rounded-[24px] bg-neutral-200/60 opacity-70" />
-      <div className="absolute left-5 right-5 top-4 -z-20 h-[500px] scale-[0.92] rounded-[24px] bg-neutral-300/40 opacity-40" />
+    <div className="relative mx-auto h-full max-h-[640px] w-full max-w-[380px] select-none">
+      <div className="absolute bottom-0 left-3 right-3 top-2 -z-10 scale-[0.96] rounded-[24px] bg-neutral-200/60 opacity-70" />
+      <div className="absolute bottom-0 left-5 right-5 top-4 -z-20 scale-[0.92] rounded-[24px] bg-neutral-300/40 opacity-40" />
 
       <motion.div
         style={{ x, rotate, opacity }}
@@ -45,7 +45,7 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.7}
         onDragEnd={handleDragEnd}
-        className="relative flex cursor-grab flex-col gap-3.5 overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white p-4 shadow-[0_12px_36px_rgba(0,0,0,0.07)] active:cursor-grabbing"
+        className="relative flex h-full cursor-grab flex-col gap-2.5 overflow-hidden rounded-[24px] border border-neutral-200/80 bg-white p-3 shadow-[0_12px_36px_rgba(0,0,0,0.07)] active:cursor-grabbing"
       >
         <motion.div
           style={{ opacity: likeOpacity }}
@@ -63,7 +63,10 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
           <ArrowRight className="h-3.5 w-3.5" />
         </motion.div>
 
-        <div className="relative aspect-square w-full overflow-hidden rounded-[18px] bg-neutral-100 shadow-inner">
+        {/* A borító a kártyában megmaradó magassághoz igazodik (négyzet marad), így
+            a teljes kártya kisebb telefonokon is elfér görgetés nélkül */}
+        <div className="flex min-h-0 flex-1 items-center justify-center">
+        <div className="relative aspect-square h-full max-w-full overflow-hidden rounded-[18px] bg-neutral-100 shadow-inner">
           {track.album.cover_url ? (
             <img
               src={track.album.cover_url}
@@ -83,13 +86,14 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
             </div>
           </div>
         </div>
+        </div>
 
-        <div className="flex items-start justify-between gap-2 px-0.5">
+        <div className="flex shrink-0 items-start justify-between gap-2 px-0.5">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold uppercase tracking-tight text-[#FF5B37]">
+            <p className="truncate text-[11px] font-bold uppercase tracking-tight text-[#FF5B37]">
               {track.artist.name}
             </p>
-            <h3 className="truncate text-lg font-extrabold leading-tight tracking-tight text-neutral-900">
+            <h3 className="truncate text-base font-extrabold leading-tight tracking-tight text-neutral-900">
               {track.title}
             </h3>
           </div>
@@ -100,18 +104,21 @@ export function DiscoveryCard({ track, rating, onRatingChange, onSwipe }: Discov
             key={embedUrl}
             src={embedUrl}
             width="100%"
-            height="152"
+            height="80"
+            className="shrink-0"
             style={{ borderRadius: 16, border: 'none' }}
             allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
             loading="lazy"
           />
         ) : (
-          <div className="flex h-[80px] items-center justify-center rounded-2xl bg-neutral-50 text-xs text-neutral-400">
+          <div className="flex h-[80px] shrink-0 items-center justify-center rounded-2xl bg-neutral-50 text-xs text-neutral-400">
             Nincs elérhető Spotify-előnézet
           </div>
         )}
 
-        <RatingControl rating={rating} onChange={onRatingChange} />
+        <div className="shrink-0">
+          <RatingControl rating={rating} onChange={onRatingChange} />
+        </div>
       </motion.div>
     </div>
   )
