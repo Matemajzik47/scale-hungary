@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { X, Copy, Check } from 'lucide-react'
 import QRCodeStyling from 'qr-code-styling'
+import { ScaleLogo } from '@/components/ScaleLogo'
 
 interface QrCodeShareModalProps {
   isOpen: boolean
@@ -88,13 +89,7 @@ export function QrCodeShareModal({ isOpen, onClose, username }: QrCodeShareModal
 
             <div className="relative flex h-[184px] w-[184px] items-center justify-center rounded-[22px] border border-neutral-200/70 bg-[#FAFAFA] shadow-inner">
               <div ref={qrContainerRef} aria-label={`QR kód @${username} profiljához`} />
-              <div className="pointer-events-none absolute flex h-9 w-9 items-center justify-center gap-[2.5px] rounded-[10px] bg-[#171717] shadow-md">
-                <span className="h-2 w-[2.5px] rounded-full bg-[#FF5B37]" />
-                <span className="h-4 w-[2.5px] rounded-full bg-white" />
-                <span className="h-3 w-[2.5px] rounded-full bg-[#FF8F68]" />
-                <span className="h-[18px] w-[2.5px] rounded-full bg-white" />
-                <span className="h-2.5 w-[2.5px] rounded-full bg-[#FF5B37]" />
-              </div>
+              <ScaleLogo className="pointer-events-none absolute h-9 w-9 shadow-md" />
             </div>
 
             <div className="flex flex-col items-center gap-1">

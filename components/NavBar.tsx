@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { ScaleLogo } from '@/components/ScaleLogo'
 import type { User } from '@supabase/supabase-js'
 
 export default function NavBar() {
@@ -41,7 +42,8 @@ export default function NavBar() {
         dark ? 'border-transparent bg-[#111214] text-white' : 'border-gray-200 bg-white text-[#111214]'
       }`}
     >
-      <Link href="/" className="text-lg font-semibold">
+      <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
+        <ScaleLogo className="h-7 w-7" />
         Scale
       </Link>
       <div className="flex items-center gap-4 text-sm">

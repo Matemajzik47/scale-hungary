@@ -8,7 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-jakarta);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -22,7 +22,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-jakarta), system-ui, sans-serif;
 }
 
 /* Kezdőoldal: borítósáv és élő pont animációk */
@@ -58,9 +58,72 @@ body {
   animation: scale-pulse 1.8s infinite;
 }
 
+/* 3D kártya: enyhe lebegés a korong fölött */
+@keyframes card-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+@keyframes card-shadow {
+  0%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.88);
+  }
+}
+
+@keyframes disc-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 14px rgba(255, 91, 55, 0.35), inset 0 0 14px rgba(255, 91, 55, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 91, 55, 0.6), inset 0 0 22px rgba(255, 91, 55, 0.35);
+  }
+}
+
+@keyframes card-sheen {
+  0%,
+  55% {
+    transform: translateX(0) skewX(-12deg);
+  }
+  100% {
+    transform: translateX(420%) skewX(-12deg);
+  }
+}
+
+.card-float {
+  animation: card-float 6s ease-in-out infinite;
+}
+
+.card-shadow {
+  animation: card-shadow 6s ease-in-out infinite;
+}
+
+.disc-glow {
+  animation: disc-glow 4s ease-in-out infinite;
+}
+
+.card-sheen {
+  animation: card-sheen 7s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .marquee-track,
-  .live-dot {
+  .live-dot,
+  .card-float,
+  .card-shadow,
+  .disc-glow,
+  .card-sheen {
     animation: none;
   }
 }

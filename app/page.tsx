@@ -1,16 +1,10 @@
 import Link from 'next/link'
-import { Bricolage_Grotesque } from 'next/font/google'
 import { supabase } from '@/lib/supabase'
 import { IdCardPreview } from '@/components/landing/IdCardPreview'
 import { TryCard, type TryTrack } from '@/components/landing/TryCard'
 import { StatsGrid } from '@/components/landing/StatsGrid'
+import { Reveal } from '@/components/landing/Reveal'
 import { TIERS } from '@/lib/tiers'
-
-const display = Bricolage_Grotesque({
-  subsets: ['latin', 'latin-ext'],
-  weight: ['700', '800'],
-  variable: '--font-display',
-})
 
 // A számok és a borítók percenként frissülnek (a cron 30 percenként bővíti a katalógust)
 export const revalidate = 60
@@ -119,12 +113,12 @@ export default async function Home() {
 
   return (
     <main
-      className={`${display.variable} flex-1 overflow-x-clip bg-white px-4 text-[#111214]`}
+      className="flex-1 overflow-x-clip bg-white px-4 text-[#111214]"
     >
       <div className="mx-auto w-full max-w-[1120px]">
         {/* Hero */}
         <header className="grid items-center gap-10 py-9 md:grid-cols-[1.15fr_0.85fr] md:py-16">
-          <div>
+          <Reveal>
             <div className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-[#FF5B37]">
               Magyar zene · dalonként értékelve
             </div>
@@ -152,18 +146,20 @@ export default async function Home() {
                 Próbáld ki regisztráció nélkül
               </a>
             </div>
-          </div>
+          </Reveal>
           <div className="grid place-items-center p-2">
             <IdCardPreview />
           </div>
         </header>
 
         {/* Élő számok */}
-        <StatsGrid stats={stats} />
+        <Reveal>
+          <StatsGrid stats={stats} />
+        </Reveal>
 
         {/* Kipróbálható kártya */}
         <section id="proba" className="grid items-center gap-8 py-[72px] md:grid-cols-[0.9fr_1.1fr]">
-          <div>
+          <Reveal>
             <div className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-[#FF5B37]">
               Próbáld ki
             </div>
@@ -174,8 +170,10 @@ export default async function Home() {
               A felfedezőt fiók nélkül is kipróbálhatod. Amikor értékelnél, kérünk egy gyors
               bejelentkezést, hogy a pontszámod a te ID-dhez kerüljön.
             </p>
-          </div>
-          <TryCard track={tryTrack} />
+          </Reveal>
+          <Reveal delay={0.1}>
+            <TryCard track={tryTrack} />
+          </Reveal>
         </section>
 
         {/* Borítósáv */}
@@ -190,12 +188,14 @@ export default async function Home() {
 
         {/* Lépések */}
         <section className="pb-[72px] pt-20">
+          <Reveal>
           <div className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-[#FF5B37]">
             Így megy
           </div>
           <h2 className="mt-3.5 max-w-[16ch] font-[family-name:var(--font-display)] text-[clamp(30px,5vw,48px)] font-extrabold leading-none tracking-[-0.02em] [text-wrap:balance]">
             Három mozdulat az ID-dig.
           </h2>
+          </Reveal>
           <div className="mt-8 grid gap-3.5 md:grid-cols-3">
             {[
               {
@@ -213,26 +213,30 @@ export default async function Home() {
                 t: 'Oszd meg',
                 d: 'A profilod QR-kódja bárkit odavisz az ízlésedhez, rangsorral és szériával.',
               },
-            ].map((s) => (
-              <div key={s.n} className="border-t-[1.5px] border-[#111214] pt-4">
+            ].map((s, i) => (
+              <Reveal key={s.n} delay={i * 0.08}>
+              <div className="border-t-[1.5px] border-[#111214] pt-4">
                 <div className="font-mono text-xs font-bold tracking-[0.1em] text-[#FF5B37]">{s.n}</div>
                 <h3 className="my-2 font-[family-name:var(--font-display)] text-[26px] font-extrabold tracking-[-0.02em]">
                   {s.t}
                 </h3>
                 <p className="max-w-[34ch] text-[#5F6064]">{s.d}</p>
               </div>
+              </Reveal>
             ))}
           </div>
         </section>
 
         {/* Napi visszatérés és szintek */}
         <section className="pb-[72px]">
+          <Reveal>
           <div className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-[#FF5B37]">
             Maradj velünk
           </div>
           <h2 className="mt-3.5 max-w-[20ch] font-[family-name:var(--font-display)] text-[clamp(30px,5vw,48px)] font-extrabold leading-none tracking-[-0.02em] [text-wrap:balance]">
             Gyere vissza minden nap, lépj szintet, váltsd be a pontjaidat.
           </h2>
+          </Reveal>
           <div className="mt-8 grid gap-3.5 md:grid-cols-3">
             {[
               {
@@ -247,18 +251,20 @@ export default async function Home() {
                 t: 'Pontok beváltása',
                 d: 'A szintekhez jutalmak és creditek tartoznak majd. Hamarosan itt találod őket.',
               },
-            ].map((x) => (
-              <div key={x.t} className="rounded-3xl bg-[#F6F4F1] p-6">
+            ].map((x, i) => (
+              <Reveal key={x.t} delay={i * 0.08}>
+              <div className="h-full rounded-3xl bg-[#F6F4F1] p-6">
                 <h3 className="font-[family-name:var(--font-display)] text-[22px] font-extrabold tracking-[-0.02em]">
                   {x.t}
                 </h3>
                 <p className="mt-2 text-[#5F6064]">{x.d}</p>
               </div>
+              </Reveal>
             ))}
           </div>
 
           {/* Szint-létra: a jutalom helye egyelőre üres, később töltjük fel */}
-          <div className="mt-8">
+          <Reveal className="mt-8">
             <div className="mb-3 font-mono text-xs font-bold uppercase tracking-[0.1em] text-[#5F6064]">
               Szintek és jutalmak
             </div>
@@ -294,10 +300,11 @@ export default async function Home() {
                 )
               })}
             </ol>
-          </div>
+          </Reveal>
         </section>
 
         {/* Záró CTA */}
+        <Reveal>
         <section className="mb-10 grid items-center justify-items-start gap-5 rounded-[32px] bg-[#111214] px-7 py-12 text-white md:grid-cols-[1.3fr_auto] md:p-16">
           <h2 className="font-[family-name:var(--font-display)] text-[clamp(32px,5.5vw,56px)] font-extrabold leading-none tracking-[-0.02em] [text-wrap:balance]">
             Mutasd meg, mit hallgatsz.
@@ -309,6 +316,7 @@ export default async function Home() {
             Regisztráció, 1 perc
           </Link>
         </section>
+        </Reveal>
 
         <footer className="flex flex-wrap justify-between gap-3 pb-8 font-mono text-xs text-[#5F6064]">
           <span>Scale · ID for your taste</span>
