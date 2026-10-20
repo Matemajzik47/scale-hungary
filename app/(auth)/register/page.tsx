@@ -93,7 +93,14 @@ export default function RegisterPage() {
           <span className="h-px flex-1 bg-gray-200" />
         </div>
         <GoogleSignInButton label="Regisztráció Google-lal" />
-        <p className="mt-4 text-sm text-gray-600">
+        <p className="mt-4 text-xs text-gray-500">
+          A regisztrációval elfogadod az{' '}
+          <a href="/privacy" className="underline">
+            adatvédelmi nyilatkozatot
+          </a>
+          .
+        </p>
+        <p className="mt-3 text-sm text-gray-600">
           Már van fiókod?{' '}
           <a href="/login" className="underline">
             Jelentkezz be

@@ -4,6 +4,52 @@
 const MB_BASE_URL = 'https://musicbrainz.org/ws/2'
 const USER_AGENT = 'ScaleApp/0.1 (matemajzik47@gmail.com)'
 
+
+// A MusicBrainz szabálya: legfeljebb 1 kérés/másodperc. A Vercel szerverei közös
+// IP-címeket használnak, ezért a túlterhelt (503) / korlátozott (429) válaszok
+// gyakoriak. Ezért két védelem van: kérések közt szünet, és hibánál újrapróbálás.
+const MB_MIN_GAP_MS = 1100
+const MB_MAX_ATTEMPTS = 4
+let lastMbRequestAt = 0
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function mbFetchJson(url: string): Promise<unknown> {
+  let lastError = 'ismeretlen hiba'
+
+  for (let attempt = 1; attempt <= MB_MAX_ATTEMPTS; attempt++) {
+    const wait = lastMbRequestAt + MB_MIN_GAP_MS - Date.now()
+    if (wait > 0) await sleep(wait)
+    lastMbRequestAt = Date.now()
+
+    try {
+      const res = await fetch(url, {
+        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
+      })
+
+      if (res.ok) return await res.json()
+
+      const body = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120)
+      lastError = `${res.status} ${res.statusText}${body ? ` (${body})` : ''}`
+
+      // Csak az átmeneti hibákat érdemes újrapróbálni
+      const retriable = res.status === 503 || res.status === 429 || res.status >= 500
+      if (!retriable) break
+
+      const retryAfter = Number(res.headers.get('retry-after'))
+      const backoff = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter, 10) * 1000
+        : 2000 * attempt
+      if (attempt < MB_MAX_ATTEMPTS) await sleep(backoff)
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+      if (attempt < MB_MAX_ATTEMPTS) await sleep(2000 * attempt)
+    }
+  }
+
+  throw new Error(`MusicBrainz hiba: ${lastError} (${MB_MAX_ATTEMPTS} próbálkozás után)`)
+}
+
 export interface MbRelease {
   id: string
   title: string
@@ -45,17 +91,9 @@ export async function fetchRecentHungarianReleases(
     query
   )}&fmt=json&limit=${limit}`
 
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT },
-  })
+  const data = (await mbFetchJson(url)) as { releases?: MbRawRelease[] }
 
-  if (!res.ok) {
-    throw new Error(`MusicBrainz hiba: ${res.status} ${res.statusText}`)
-  }
-
-  const data = await res.json()
-
-  return ((data.releases ?? []) as MbRawRelease[]).map(mapRawRelease)
+  return (data.releases ?? []).map(mapRawRelease)
 }
 
 export interface MbReleasePage {
@@ -84,17 +122,9 @@ export async function fetchHungarianReleasesPageInRange(
     query
   )}&fmt=json&limit=${limit}&offset=${offset}`
 
-  const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT },
-  })
+  const data = (await mbFetchJson(url)) as { releases?: MbRawRelease[]; count?: number }
 
-  if (!res.ok) {
-    throw new Error(`MusicBrainz hiba: ${res.status} ${res.statusText}`)
-  }
-
-  const data = await res.json()
-
-  const releases = ((data.releases ?? []) as MbRawRelease[]).map(mapRawRelease)
+  const releases = (data.releases ?? []).map(mapRawRelease)
 
   return { releases, total: data.count ?? releases.length }
 }

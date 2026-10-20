@@ -6,6 +6,7 @@ import { UserX } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { loadProfileDataByUsername, type ProfileData } from '@/lib/profileData'
 import { ProfileDisplay } from '@/components/profile/ProfileDisplay'
+import { ProfileSocialPanel } from '@/components/social/ProfileSocialPanel'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
 
 export default function PublicProfilePage() {
@@ -70,7 +71,15 @@ export default function PublicProfilePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col gap-3 px-4 py-4">
-      <ProfileDisplay data={data} />
+      <ProfileDisplay
+        data={data}
+        socialSlot={
+          <ProfileSocialPanel
+            profileUserId={data.profile.id}
+            profileUsername={data.profile.username}
+          />
+        }
+      />
     </div>
   )
 }

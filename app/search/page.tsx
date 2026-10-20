@@ -248,7 +248,9 @@ export default function SearchPage() {
                     </div>
                   )}
                   <div className="min-w-0">
-                    <h4 className="truncate text-xs font-bold text-neutral-900">{t.title}</h4>
+                    <Link href={`/track/${t.id}`} className="block hover:underline">
+                      <h4 className="truncate text-xs font-bold text-neutral-900">{t.title}</h4>
+                    </Link>
                     <p className="truncate text-[11px] font-medium text-neutral-500">
                       {t.artist.name}
                     </p>

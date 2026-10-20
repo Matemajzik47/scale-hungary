@@ -312,7 +312,9 @@ export default async function Home() {
 
         <footer className="flex flex-wrap justify-between gap-3 pb-8 font-mono text-xs text-[#5F6064]">
           <span>Scale · ID for your taste</span>
-          <span>Magyar zene, közösségi pontszámokkal</span>
+          <Link href="/privacy" className="underline-offset-2 hover:underline">
+            Adatvédelmi nyilatkozat
+          </Link>
         </footer>
       </div>
     </main>

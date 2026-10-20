@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
+import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DiscoveryCard } from '@/components/discover/DiscoveryCard'
@@ -271,6 +272,13 @@ export default function DiscoverPage() {
           score={currentTrack.communityAverage}
           totalRatings={currentTrack.totalRatings}
         />
+
+        <Link
+          href={`/track/${currentTrack.id}`}
+          className="text-[11px] font-semibold text-neutral-400 underline-offset-2 transition hover:text-neutral-700 hover:underline"
+        >
+          Dal részletei és az album többi dala
+        </Link>
 
         <div className="flex w-full items-center justify-between px-2 text-neutral-400">
           <button

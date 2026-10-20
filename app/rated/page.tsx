@@ -188,7 +188,7 @@ export default function RatedPage() {
           {items.map((item) => (
             <Link
               key={item.trackId}
-              href="/search"
+              href={`/track/${item.trackId}`}
               className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200/80 bg-white p-3 shadow-sm transition-all hover:bg-neutral-50 active:scale-[0.98]"
             >
               <div className="flex min-w-0 items-center gap-3">

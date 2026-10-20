@@ -32,6 +32,11 @@ export const maxDuration = 300
 
 const BACKFILL_PAGE_SIZE = 40
 
+// Ennyi Spotify nélküli albumot próbálunk újra összepárosítani egy futás alatt
+const REPAIR_BATCH_SIZE = 10
+// Egy sikertelen párosítást ennyi nap múlva próbálunk újra
+const REPAIR_RETRY_DAYS = 30
+
 // A backfill ezeken a dátumsávokon halad végig SORBAN — előbb a legújabb
 // évtized, csak utána a régebbiek. Így az "utóbbi 10 év" mindig előbb
 // épül fel, mint az azt megelőző korszakok.
@@ -47,12 +52,21 @@ type SyncSummary = {
   newArtists: number
   newAlbums: number
   newTracks: number
+  repairedAlbums: number
   skipped: number
   errors: string[]
 }
 
 function createSummary(): SyncSummary {
-  return { processed: 0, newArtists: 0, newAlbums: 0, newTracks: 0, skipped: 0, errors: [] }
+  return {
+    processed: 0,
+    newArtists: 0,
+    newAlbums: 0,
+    newTracks: 0,
+    repairedAlbums: 0,
+    skipped: 0,
+    errors: [],
+  }
 }
 
 function errorMessage(err: unknown): string {
@@ -221,38 +235,114 @@ export async function GET(request: NextRequest) {
 
   if (waitForResult) {
     const summary = createSummary()
-    try {
-      await runSync(summary)
-      return NextResponse.json({ success: true, summary })
-    } catch (err) {
-      return NextResponse.json(
-        { success: false, error: errorMessage(err), summary },
-        { status: 500 }
-      )
-    }
+    await runSync(summary)
+    // Ha semmi sem sikerült, és csak hibák vannak, jelezzük 502-vel
+    const failed = summary.errors.length > 0 && summary.processed === 0 && summary.skipped === 0
+    return NextResponse.json(
+      { success: !failed, summary },
+      { status: failed ? 502 : 200 }
+    )
   }
 
   after(async () => {
     const summary = createSummary()
-    try {
-      await runSync(summary)
-      console.log('[sync-catalog] kész', JSON.stringify(summary))
-    } catch (err) {
-      console.error('[sync-catalog] hiba', errorMessage(err), JSON.stringify(summary))
-    }
+    await runSync(summary)
+    const log = summary.errors.length > 0 ? console.error : console.log
+    log('[sync-catalog] kész', JSON.stringify(summary))
   })
 
   return NextResponse.json({ success: true, started: true })
 }
 
+
+type RepairAlbumRow = {
+  id: string
+  title: string
+  artists: { name: string } | null
+}
+
+/**
+ * Pótlás: azok az albumok, amelyekhez korábban nem találtunk Spotify-egyezést
+ * (ezért nincs borítójuk és dalaik), újra próbálkoznak — a javított, tisztított
+ * keresővel. Egy sikertelen próbát a spotify_checked_at jelzi, így ugyanaz az
+ * album nem kerül sorra minden futásnál, csak REPAIR_RETRY_DAYS nap múlva.
+ */
+async function runSpotifyRepair(summary: SyncSummary) {
+  const cutoff = new Date(Date.now() - REPAIR_RETRY_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data, error } = await supabaseAdmin
+    .from('albums')
+    .select('id, title, artists(name)')
+    .is('spotify_album_id', null)
+    .or(`spotify_checked_at.is.null,spotify_checked_at.lt.${cutoff}`)
+    .order('spotify_checked_at', { ascending: true, nullsFirst: true })
+    .limit(REPAIR_BATCH_SIZE)
+
+  if (error) throw error
+
+  for (const album of (data ?? []) as unknown as RepairAlbumRow[]) {
+    const artistName = album.artists?.name
+    try {
+      const match = artistName ? await searchSpotifyAlbum(artistName, album.title) : null
+
+      if (match) {
+        const { error: updateError } = await supabaseAdmin
+          .from('albums')
+          .update({ spotify_album_id: match.spotifyAlbumId, cover_url: match.coverUrl })
+          .eq('id', album.id)
+        if (updateError) throw updateError
+
+        if (match.trackIds.length > 0) {
+          const { error: tracksError } = await supabaseAdmin.from('tracks').insert(
+            match.trackIds.map((t) => ({
+              album_id: album.id,
+              title: t.title,
+              spotify_track_id: t.id,
+            }))
+          )
+          if (tracksError) throw tracksError
+          summary.newTracks += match.trackIds.length
+        }
+        summary.repairedAlbums++
+      }
+
+      await supabaseAdmin
+        .from('albums')
+        .update({ spotify_checked_at: new Date().toISOString() })
+        .eq('id', album.id)
+    } catch (err) {
+      // Hibánál nem jelöljük ellenőrzöttnek, a következő futás újra megpróbálja
+      summary.errors.push(`Pótlás (${album.title}): ${errorMessage(err)}`)
+    }
+  }
+}
+
 async function runSync(summary: SyncSummary) {
+  // A két rész egymástól függetlenül fut: ha a MusicBrainz az egyiknél hibát ad,
+  // a másik attól még lefuthat, és a hiba bekerül az összegzésbe.
+
   // 1. Friss (elmúlt 180 nap) kiadások
-  const recentReleases = await fetchRecentHungarianReleases(180, 25)
-  for (const release of recentReleases) {
-    await processRelease(release, summary)
+  try {
+    const recentReleases = await fetchRecentHungarianReleases(180, 25)
+    for (const release of recentReleases) {
+      await processRelease(release, summary)
+    }
+  } catch (err) {
+    summary.errors.push(`Friss kiadások: ${errorMessage(err)}`)
   }
 
   // 2. Archív backfill — egy adagnyi régi kiadás a legújabb dátumsávtól
   // kezdve (ld. BACKFILL_RANGES), ha még nem végeztünk
-  await runBackfillBatch(summary)
+  try {
+    await runBackfillBatch(summary)
+  } catch (err) {
+    summary.errors.push(`Backfill: ${errorMessage(err)}`)
+  }
+
+  // 3. Spotify nélküli albumok újrapárosítása
+  try {
+    await runSpotifyRepair(summary)
+  } catch (err) {
+    summary.errors.push(`Pótlás: ${errorMessage(err)}`)
+  }
 }

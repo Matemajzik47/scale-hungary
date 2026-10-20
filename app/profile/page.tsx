@@ -8,6 +8,8 @@ import { loadProfileDataByUserId, type ProfileData } from '@/lib/profileData'
 import { ProfileDisplay } from '@/components/profile/ProfileDisplay'
 import { QrCodeShareModal } from '@/components/profile/QrCodeShareModal'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
+import { ProfileSocialPanel } from '@/components/social/ProfileSocialPanel'
+import { InstallButton } from '@/components/pwa/InstallButton'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -69,7 +71,15 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col gap-3 px-4 py-4">
-      <ProfileDisplay data={data} />
+      <ProfileDisplay
+        data={data}
+        socialSlot={
+          <ProfileSocialPanel
+            profileUserId={data.profile.id}
+            profileUsername={data.profile.username}
+          />
+        }
+      />
 
       <div className="pb-1 pt-1">
         <button
@@ -82,6 +92,8 @@ export default function ProfilePage() {
           <Share2 className="h-3.5 w-3.5 opacity-80" />
         </button>
       </div>
+
+      <InstallButton />
 
       <button
         type="button"

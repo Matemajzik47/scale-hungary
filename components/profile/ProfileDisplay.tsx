@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { Flame, Calendar, Star, Disc3 } from 'lucide-react'
 import { getTierForRatings } from '@/lib/tiers'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
@@ -7,9 +8,11 @@ import type { ProfileData } from '@/lib/profileData'
 
 interface ProfileDisplayProps {
   data: ProfileData
+  // A fejléc és az ID kártya közé kerülő rész (követés, ízlés-egyezés)
+  socialSlot?: ReactNode
 }
 
-export function ProfileDisplay({ data }: ProfileDisplayProps) {
+export function ProfileDisplay({ data, socialSlot }: ProfileDisplayProps) {
   const { profile, stats, curatorScore, topAlbums } = data
   const tier = getTierForRatings(stats.total_ratings ?? 0)
   const joinedLabel = new Date(profile.created_at).toLocaleDateString('hu-HU', {
@@ -40,6 +43,8 @@ export function ProfileDisplay({ data }: ProfileDisplayProps) {
           <span className="text-[10px] font-bold uppercase tracking-tight">{tier.label}</span>
         </div>
       </header>
+
+      {socialSlot}
 
       <MusicIdCard username={profile.username} tierLabel={tier.label} curatorScore={curatorScore} />
 

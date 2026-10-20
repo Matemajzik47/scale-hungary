@@ -1,8 +1,9 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from "@/components/NavBar";
 import BottomNavBar from "@/components/BottomNavBar";
+import { PwaRegister } from "@/components/pwa/PwaRegister";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,6 +18,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Scale",
   description: "Magyar zenei rating platform",
+  applicationName: "Scale",
+  appleWebApp: { capable: true, title: "Scale", statusBarStyle: "black-translucent" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#111214",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -29,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <NavBar />
         {children}
         <BottomNavBar />
+        <PwaRegister />
       </body>
     </html>
   );

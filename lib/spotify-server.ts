@@ -41,31 +41,94 @@ export interface SpotifyAlbumMatch {
   trackIds: { id: string; title: string }[]
 }
 
+type SpotifyAlbumItem = {
+  id: string
+  name: string
+  images?: { url: string }[]
+  artists?: { name: string }[]
+}
+
+type SpotifyTrackItem = { id: string; name: string }
+
+/** Ékezetek, kis/nagybetű és írásjelek nélküli összehasonlító alak */
+function normalize(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+}
+
+/**
+ * Az album címének "tisztított" változata: a zárójeles részek ("(Deluxe)",
+ * "[Remastered]") és a gyakori kiadás-jelölések nélkül — ezek miatt nem talál
+ * a Spotify keresője, mert a MusicBrainz és a Spotify másképp írja őket.
+ */
+function cleanTitle(title: string): string {
+  return title
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .replace(/\s[-–—]\s(deluxe|remaster(ed)?|expanded|special|bonus|extended).*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function artistMatches(item: SpotifyAlbumItem, artistName: string): boolean {
+  const wanted = normalize(artistName)
+  if (!wanted) return false
+  return (item.artists ?? []).some((a) => {
+    const have = normalize(a.name)
+    return have === wanted || have.includes(wanted) || wanted.includes(have)
+  })
+}
+
+function titleMatches(item: SpotifyAlbumItem, albumTitle: string): boolean {
+  const wanted = normalize(cleanTitle(albumTitle))
+  const have = normalize(cleanTitle(item.name))
+  if (!wanted || !have) return false
+  return have === wanted || have.includes(wanted) || wanted.includes(have)
+}
+
+async function searchAlbums(query: string, token: string): Promise<SpotifyAlbumItem[]> {
+  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(
+    query
+  )}&type=album&market=HU&limit=5`
+
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) {
+    throw new Error(`Spotify search hiba: ${res.status} ${res.statusText}`)
+  }
+
+  const data = await res.json()
+  return (data.albums?.items ?? []) as SpotifyAlbumItem[]
+}
+
 /**
  * Megkeresi egy album Spotify-megfelelőjét előadó + cím alapján.
- * Visszaadja a borítóképet és a track-listát, amit a mi adatbázisunkba mentünk.
+ * Több keresési változatot próbál (pontos cím, tisztított cím, sima szöveges
+ * keresés), és csak olyan találatot fogad el, ahol az előadó is egyezik, hogy
+ * ne kerüljön be rossz album.
  */
 export async function searchSpotifyAlbum(
   artistName: string,
   albumTitle: string
 ): Promise<SpotifyAlbumMatch | null> {
   const token = await getSpotifyToken()
+  const cleaned = cleanTitle(albumTitle)
 
-  const query = `album:${albumTitle} artist:${artistName}`
-  const url = `https://api.spotify.com/v1/search?q=${encodeURIComponent(
-    query
-  )}&type=album&market=HU&limit=1`
+  const queries = [
+    `album:${albumTitle} artist:${artistName}`,
+    ...(cleaned && cleaned !== albumTitle ? [`album:${cleaned} artist:${artistName}`] : []),
+    `${cleaned || albumTitle} ${artistName}`,
+  ]
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  let album: SpotifyAlbumItem | null = null
 
-  if (!res.ok) {
-    throw new Error(`Spotify search hiba: ${res.status} ${res.statusText}`)
+  for (const query of queries) {
+    const items = await searchAlbums(query, token)
+    const candidates = items.filter((item) => artistMatches(item, artistName))
+    album = candidates.find((item) => titleMatches(item, albumTitle)) ?? null
+    if (album) break
   }
-
-  const data = await res.json()
-  const album = data.albums?.items?.[0]
 
   if (!album) return null
 
@@ -79,7 +142,7 @@ export async function searchSpotifyAlbum(
   return {
     spotifyAlbumId: album.id,
     coverUrl: album.images?.[0]?.url ?? null,
-    trackIds: (tracksData.items ?? []).map((t: any) => ({
+    trackIds: ((tracksData.items ?? []) as SpotifyTrackItem[]).map((t) => ({
       id: t.id,
       title: t.name,
     })),
