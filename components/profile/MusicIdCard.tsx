@@ -1,69 +1,164 @@
 'use client'
 
-import { Sparkles, ShieldCheck } from 'lucide-react'
-import { motion } from 'motion/react'
+import { useRef } from 'react'
+import { ShieldCheck, Flame } from 'lucide-react'
+import { ScaleLogo } from '@/components/ScaleLogo'
 
 interface MusicIdCardProps {
   username: string
   tierLabel: string
   curatorScore: number | null
+  totalRatings: number
+  streak: number
+  joinedLabel: string
+  bgUrl?: string | null
 }
 
-export function MusicIdCard({ username, tierLabel, curatorScore }: MusicIdCardProps) {
+// A felhasználónévből képzett, mindig ugyanolyan "ízlés-hullámforma" és ID szám
+function hashOf(text: string): number {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+function waveFor(username: string): number[] {
+  let seed = hashOf(username) || 1
+  const out: number[] = []
+  for (let i = 0; i < 30; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    out.push(6 + (seed % 100) * 0.26)
+  }
+  return out
+}
+
+export function MusicIdCard({
+  username,
+  tierLabel,
+  curatorScore,
+  totalRatings,
+  streak,
+  joinedLabel,
+  bgUrl,
+}: MusicIdCardProps) {
+  const tiltRef = useRef<HTMLDivElement>(null)
+  const wave = waveFor(username)
+  const idNumber = String(hashOf(username) % 1000000).padStart(6, '0')
+
+  // Egérrel/érintéssel enyhén megdől, mint egy valódi kártya
+  function onMove(e: React.PointerEvent<HTMLDivElement>) {
+    const el = tiltRef.current
+    if (!el) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = (e.clientX - rect.left) / rect.width - 0.5
+    const y = (e.clientY - rect.top) / rect.height - 0.5
+    el.style.setProperty('--ry', `${x * 12}deg`)
+    el.style.setProperty('--rx', `${-y * 12}deg`)
+    el.style.setProperty('--gx', `${(x + 0.5) * 100}%`)
+  }
+  function onLeave() {
+    const el = tiltRef.current
+    if (!el) return
+    el.style.setProperty('--ry', '0deg')
+    el.style.setProperty('--rx', '0deg')
+    el.style.setProperty('--gx', '30%')
+  }
+
   return (
-    <motion.section
+    <section
       aria-label="Music Taste ID kártya"
-      whileHover={{ scale: 1.01 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      className="relative w-full overflow-hidden rounded-[22px] border border-neutral-800 bg-gradient-to-br from-[#1E1F24] via-[#16171B] to-[#0F1013] p-4 text-white shadow-[0_12px_28px_rgba(0,0,0,0.22)]"
+      onPointerMove={onMove}
+      onPointerLeave={onLeave}
+      className="[perspective:900px]"
     >
-      <div className="pointer-events-none absolute -bottom-6 -right-6 h-36 w-36 rounded-full bg-[#FF5B37] opacity-15 blur-2xl" />
-      <svg
-        className="pointer-events-none absolute right-0 top-0 bottom-0 h-full w-36 stroke-white opacity-10"
-        viewBox="0 0 100 100"
-        fill="none"
+      <div
+        ref={tiltRef}
+        style={{ '--ry': '0deg', '--rx': '0deg', '--gx': '30%' } as React.CSSProperties}
+        className="relative min-h-[236px] w-full overflow-hidden rounded-[24px] border border-neutral-700/70 bg-[#101114] p-5 text-white shadow-[0_18px_40px_rgba(0,0,0,0.3)] transition-transform duration-200 ease-out [transform:rotateY(var(--ry))_rotateX(var(--rx))]"
       >
-        <path d="M10,50 Q25,10 50,50 T90,50" strokeWidth="2" />
-        <path d="M0,60 Q30,20 60,60 T100,60" strokeWidth="1.5" strokeDasharray="3 3" />
-      </svg>
+        {/* Hátoldal: a felhasználó saját képe, halványan */}
+        {bgUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={bgUrl}
+            alt=""
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-45"
+          />
+        )}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#1E1F24]/85 via-[#14151A]/75 to-[#0B0B0D]/90" />
+        <div className="pointer-events-none absolute -bottom-12 -right-10 h-48 w-48 rounded-full bg-[#FF5B37] opacity-25 blur-3xl" />
+        {/* Holografikus fénycsík, a kurzorral mozog */}
+        <div
+          className="pointer-events-none absolute inset-0 opacity-70 mix-blend-overlay"
+          style={{
+            background:
+              'linear-gradient(115deg, transparent calc(var(--gx) - 18%), rgba(255,255,255,0.28) var(--gx), transparent calc(var(--gx) + 18%))',
+          }}
+        />
 
-      <div className="mb-3 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
-          <div className="flex h-5 w-5 items-center justify-center rounded-lg bg-[#FF5B37] text-[9px] font-black tracking-tighter text-white">
-            SC
+        <div className="relative z-10 flex min-h-[196px] flex-col justify-between gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ScaleLogo className="h-7 w-7" />
+              <span className="font-mono text-[10px] font-extrabold uppercase tracking-[0.18em] text-neutral-200">
+                Scale Music Taste ID
+              </span>
+            </div>
+            <span className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm">
+              <ShieldCheck className="h-3 w-3 text-[#FF8F68]" />
+              {tierLabel}
+            </span>
           </div>
-          <span className="font-mono text-[10px] font-extrabold uppercase tracking-widest text-neutral-300">
-            SCALE MUSIC TASTE ID
-          </span>
-        </div>
-        <span className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 font-mono text-[10px] text-neutral-300 backdrop-blur-sm">
-          <ShieldCheck className="h-3 w-3" />
-          {tierLabel}
-        </span>
-      </div>
 
-      <div className="my-1 flex flex-col gap-1">
-        <span className="flex items-center gap-1.5 text-lg font-black tracking-tight text-white">
-          @{username}
-          <Sparkles className="h-3.5 w-3.5 text-[#FF8F68]" />
-        </span>
-      </div>
+          <div>
+            <div className="truncate font-[family-name:var(--font-display)] text-[26px] font-bold leading-none tracking-tight drop-shadow">
+              @{username}
+            </div>
+            <div className="mt-1.5 font-mono text-[10px] tracking-[0.14em] text-neutral-300">
+              ID № {idNumber} · TAG {joinedLabel.toUpperCase()}
+            </div>
+            <div className="mt-3 flex h-[22px] items-center gap-[3px]" aria-hidden="true">
+              {wave.map((h, i) => (
+                <span
+                  key={i}
+                  style={{ height: h }}
+                  className={`w-[3px] rounded-sm ${i % 4 === 3 ? 'bg-white' : 'bg-[#FF5B37]'}`}
+                />
+              ))}
+            </div>
+          </div>
 
-      <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-3 text-[11px]">
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-medium text-neutral-400">Saját átlagod:</span>
-          <span className="rounded-md bg-[#FF5B37]/15 px-1.5 py-0.5 font-mono font-black text-[#FF8F68]">
-            {curatorScore !== null ? curatorScore.toFixed(1) : '–'}
-          </span>
-        </div>
-        <div className="flex h-3.5 items-end gap-[3px] opacity-80">
-          <span className="h-2 w-[2px] rounded-full bg-[#FF5B37]" />
-          <span className="h-3.5 w-[2px] rounded-full bg-white" />
-          <span className="h-2.5 w-[2px] rounded-full bg-[#FF8F68]" />
-          <span className="h-3 w-[2px] rounded-full bg-white" />
-          <span className="h-1.5 w-[2px] rounded-full bg-[#FF5B37]" />
+          <div className="flex items-end justify-between border-t border-white/15 pt-3">
+            <div>
+              <span className="block font-mono text-[9px] uppercase tracking-[0.14em] text-neutral-300">
+                Saját átlag
+              </span>
+              <b className="font-[family-name:var(--font-display)] text-[30px] font-bold leading-none text-[#FF8F68]">
+                {curatorScore !== null ? curatorScore.toFixed(1) : '–'}
+              </b>
+            </div>
+            <div className="flex gap-4 text-right">
+              <div>
+                <span className="block font-mono text-[9px] uppercase tracking-[0.14em] text-neutral-300">
+                  Dal
+                </span>
+                <b className="font-mono text-base font-bold">{totalRatings}</b>
+              </div>
+              <div>
+                <span className="block font-mono text-[9px] uppercase tracking-[0.14em] text-neutral-300">
+                  Széria
+                </span>
+                <b className="flex items-center justify-end gap-0.5 font-mono text-base font-bold text-[#FF8F68]">
+                  <Flame className="h-3.5 w-3.5" />
+                  {streak}
+                </b>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </motion.section>
+    </section>
   )
 }

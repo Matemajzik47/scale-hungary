@@ -5,6 +5,7 @@ export interface Profile {
   id: string
   username: string
   created_at: string
+  card_bg_url?: string | null
 }
 
 export interface Artist {

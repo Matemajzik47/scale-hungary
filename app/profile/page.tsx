@@ -73,6 +73,9 @@ export default function ProfilePage() {
     <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col gap-3 px-4 py-4">
       <ProfileDisplay
         data={data}
+        onCardBgChange={(url) =>
+          setData((prev) => (prev ? { ...prev, profile: { ...prev.profile, card_bg_url: url } } : prev))
+        }
         socialSlot={
           <ProfileSocialPanel
             profileUserId={data.profile.id}

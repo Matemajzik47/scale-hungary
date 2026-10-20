@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { Flame, Calendar, Star, Disc3 } from 'lucide-react'
 import { getTierForRatings } from '@/lib/tiers'
+import { CardBackgroundButton } from '@/components/profile/CardBackgroundButton'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
 import type { ProfileData } from '@/lib/profileData'
 
@@ -10,9 +11,11 @@ interface ProfileDisplayProps {
   data: ProfileData
   // A fejléc és az ID kártya közé kerülő rész (követés, ízlés-egyezés)
   socialSlot?: ReactNode
+  // Ha meg van adva, a kártya háttérképe szerkeszthető (csak a saját profilon)
+  onCardBgChange?: (url: string | null) => void
 }
 
-export function ProfileDisplay({ data, socialSlot }: ProfileDisplayProps) {
+export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisplayProps) {
   const { profile, stats, curatorScore, topAlbums } = data
   const tier = getTierForRatings(stats.total_ratings ?? 0)
   const joinedLabel = new Date(profile.created_at).toLocaleDateString('hu-HU', {
@@ -46,7 +49,22 @@ export function ProfileDisplay({ data, socialSlot }: ProfileDisplayProps) {
 
       {socialSlot}
 
-      <MusicIdCard username={profile.username} tierLabel={tier.label} curatorScore={curatorScore} />
+      <MusicIdCard
+        username={profile.username}
+        tierLabel={tier.label}
+        curatorScore={curatorScore}
+        totalRatings={stats.total_ratings ?? 0}
+        streak={stats.current_streak ?? 0}
+        joinedLabel={joinedLabel}
+        bgUrl={profile.card_bg_url}
+      />
+      {onCardBgChange && (
+        <CardBackgroundButton
+          userId={profile.id}
+          hasImage={Boolean(profile.card_bg_url)}
+          onChange={onCardBgChange}
+        />
+      )}
 
       {topAlbums.length > 0 && (
         <section className="flex flex-col gap-1.5">

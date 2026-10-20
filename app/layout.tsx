@@ -1,18 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans, Space_Grotesk, Geist_Mono } from "next/font/google";
+import { Manrope, Sora, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import NavBar from "@/components/NavBar";
 import BottomNavBar from "@/components/BottomNavBar";
 import { PwaRegister } from "@/components/pwa/PwaRegister";
 
 // Törzsszöveg: modern, letisztult, jól olvasható (ő/ű miatt latin-ext)
-const jakarta = Plus_Jakarta_Sans({
+const jakarta = Manrope({
   variable: "--font-jakarta",
   subsets: ["latin", "latin-ext"],
 });
 
 // Címsorok és számok: technikás, fiatalos karakter
-const display = Space_Grotesk({
+const display = Sora({
   variable: "--font-display",
   subsets: ["latin", "latin-ext"],
 });

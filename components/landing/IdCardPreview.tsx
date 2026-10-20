@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 import { ScaleLogo } from '@/components/ScaleLogo'
 
 // Dekoratív példa Music ID kártya a kezdőoldal hero-jához (nem valódi felhasználó).
@@ -30,6 +31,7 @@ const QR_CELLS = buildQrCells()
 
 export function IdCardPreview() {
   const tiltRef = useRef<HTMLDivElement>(null)
+  const reduce = useReducedMotion()
 
   function onMove(e: React.PointerEvent<HTMLDivElement>) {
     if (e.pointerType !== 'mouse') return
@@ -57,17 +59,29 @@ export function IdCardPreview() {
       className="relative mx-auto h-[420px] w-full max-w-[400px] [perspective:1200px]"
     >
       {/* Mágneskorong: több rétegű, narancs peremmel és fénnyel */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-2 h-[110px]" aria-hidden="true">
+      <motion.div
+        initial={reduce ? false : { opacity: 0, scale: 0.8, y: 24 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.7, ease: 'easeOut' }}
+        className="pointer-events-none absolute inset-x-0 bottom-2 h-[110px]"
+        aria-hidden="true"
+      >
         <div className="absolute inset-x-[2%] bottom-0 h-[84px] rounded-[50%] bg-[#0B0B0D] shadow-[0_26px_40px_rgba(17,18,20,0.28)]" />
         <div className="absolute inset-x-[2%] bottom-[10px] h-[84px] rounded-[50%] border border-[#33343A] bg-gradient-to-b from-[#2A2B31] to-[#17181B]" />
         <div className="disc-glow absolute inset-x-[9%] bottom-[18px] h-[64px] rounded-[50%] border-2 border-[#FF5B37] bg-[#121316]" />
         <div className="absolute inset-x-[24%] bottom-[28px] h-[42px] rounded-[50%] bg-gradient-to-b from-[#1E1F24] to-[#0B0B0D] shadow-[inset_0_2px_10px_rgba(255,91,55,0.35)]" />
         {/* A kártya vetett árnyéka a koronggal együtt "lélegzik" */}
         <div className="card-shadow absolute inset-x-[26%] bottom-[34px] h-[30px] rounded-[50%] bg-[#FF5B37]/40 blur-xl" />
-      </div>
+      </motion.div>
 
-      {/* Lebegő kártya */}
-      <div className="card-float absolute inset-x-0 top-0 flex justify-center">
+      {/* Lebegő kártya: a korong után "leereszkedik", majd lebeg */}
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: -70 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', damping: 14, stiffness: 70, delay: 0.35 }}
+        className="absolute inset-x-0 top-0"
+      >
+      <div className="card-float flex justify-center">
         <div
           ref={tiltRef}
           style={{ '--ry': '-16deg', '--rx': '6deg' } as React.CSSProperties}
@@ -129,6 +143,7 @@ export function IdCardPreview() {
           </div>
         </div>
       </div>
+      </motion.div>
     </div>
   )
 }
