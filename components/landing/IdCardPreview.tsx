@@ -8,7 +8,7 @@ import { MusicIdCard } from '@/components/profile/MusicIdCard'
 // használja, mint a profil, így a főoldalon is pontosan ilyet kapsz.
 // 3D-ben lebeg egy mágneskorong fölött; egérrel enyhén követi a kurzort.
 
-export function IdCardPreview() {
+export function IdCardPreview({ bgUrl }: { bgUrl?: string | null }) {
   const tiltRef = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
 
@@ -19,15 +19,15 @@ export function IdCardPreview() {
     const rect = e.currentTarget.getBoundingClientRect()
     const x = (e.clientX - rect.left) / rect.width - 0.5
     const y = (e.clientY - rect.top) / rect.height - 0.5
-    el.style.setProperty('--ry', `${-16 + x * 14}deg`)
-    el.style.setProperty('--rx', `${6 - y * 12}deg`)
+    el.style.setProperty('--ry', `${-9 + x * 10}deg`)
+    el.style.setProperty('--rx', `${3 - y * 8}deg`)
   }
 
   function onLeave() {
     const el = tiltRef.current
     if (!el) return
-    el.style.setProperty('--ry', '-16deg')
-    el.style.setProperty('--rx', '6deg')
+    el.style.setProperty('--ry', '-9deg')
+    el.style.setProperty('--rx', '3deg')
   }
 
   return (
@@ -35,7 +35,7 @@ export function IdCardPreview() {
       aria-label="Példa Music Taste ID kártya"
       onPointerMove={onMove}
       onPointerLeave={onLeave}
-      className="relative mx-auto h-[420px] w-full max-w-[400px] [perspective:1200px]"
+      className="relative mx-auto h-[365px] w-full max-w-[400px] [perspective:1200px]"
     >
       {/* Mágneskorong: több rétegű, narancs peremmel és fénnyel */}
       <motion.div
@@ -60,10 +60,10 @@ export function IdCardPreview() {
         transition={{ type: 'spring', damping: 14, stiffness: 70, delay: 0.35 }}
         className="absolute inset-x-0 top-0"
       >
-      <div className="card-float flex justify-center">
+      <div className="card-float flex justify-center [will-change:transform]">
         <div
           ref={tiltRef}
-          style={{ '--ry': '-16deg', '--rx': '6deg' } as React.CSSProperties}
+          style={{ '--ry': '-9deg', '--rx': '3deg' } as React.CSSProperties}
           className="relative w-[88%] transition-transform duration-300 ease-out [transform-style:preserve-3d] [transform:rotateY(var(--ry))_rotateX(var(--rx))]"
         >
           {/* Vastagság: két mögöttes réteg */}
@@ -71,11 +71,12 @@ export function IdCardPreview() {
           <div className="absolute inset-0 rounded-[24px] bg-[#17181B] [transform:translateZ(-7px)]" />
 
           <MusicIdCard
-            username="pelda_felhasznalo"
+            username="zenebolond"
             tierLabel="Hallgató"
-            curatorScore={7.8}
-            totalRatings={128}
-            streak={14}
+            curatorScore={8.1}
+            totalRatings={312}
+            streak={21}
+            bgUrl={bgUrl}
             interactive={false}
             autoSheen
           />

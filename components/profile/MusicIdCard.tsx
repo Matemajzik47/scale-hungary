@@ -51,7 +51,7 @@ export function MusicIdCard({
   bgUrl,
   bgPos = DEFAULT_BG_POS,
   interactive = true,
-  autoSheen = false,
+  autoSheen = true,
 }: MusicIdCardProps) {
   const tiltRef = useRef<HTMLDivElement>(null)
   const wave = waveFor(username)
@@ -94,15 +94,15 @@ export function MusicIdCard({
         <div className="pointer-events-none absolute -bottom-12 -right-10 h-48 w-48 rounded-full bg-[#FF5B37] opacity-25 blur-3xl" />
         {/* Holografikus fénycsík, a kurzorral mozog */}
         <div
-          className="pointer-events-none absolute inset-0 opacity-70 mix-blend-overlay"
+          className="pointer-events-none absolute inset-0 opacity-90 mix-blend-screen"
           style={{
             background:
-              'linear-gradient(115deg, transparent calc(var(--gx) - 18%), rgba(255,255,255,0.28) var(--gx), transparent calc(var(--gx) + 18%))',
+              'linear-gradient(115deg, transparent calc(var(--gx) - 18%), rgba(255,255,255,0.4) var(--gx), transparent calc(var(--gx) + 18%))',
           }}
         />
 
         {autoSheen && (
-          <div className="card-sheen pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r from-transparent via-white/30 to-transparent mix-blend-overlay" />
+          <div className="card-sheen pointer-events-none absolute inset-y-[-10%] -left-[40%] z-20 w-[34%] bg-gradient-to-r from-transparent via-white/55 to-transparent blur-[2px]" />
         )}
 
         <div className="relative z-10 flex min-h-[196px] flex-col justify-between gap-3">
