@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Star, Music } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
+import { Reveal } from '@/components/landing/Reveal'
 
 type RatingRow = {
   score: number
@@ -185,9 +186,9 @@ export default function RatedPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {items.map((item) => (
+          {items.map((item, i) => (
+            <Reveal key={item.trackId} delay={Math.min(i, 8) * 0.04}>
             <Link
-              key={item.trackId}
               href={`/track/${item.trackId}`}
               className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200/80 bg-white p-3 shadow-sm transition-all hover:bg-neutral-50 active:scale-[0.98]"
             >
@@ -222,6 +223,7 @@ export default function RatedPage() {
                 <span className="text-[9px] text-neutral-400">{item.ratedAt}</span>
               </div>
             </Link>
+            </Reveal>
           ))}
         </div>
       )}
