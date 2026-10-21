@@ -40,7 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="hu"
       className={`${jakarta.variable} ${display.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col pb-16">
+      <body className="min-h-full flex flex-col pb-16 sm:pb-0">
         <NavBar />
         {children}
         <BottomNavBar />
