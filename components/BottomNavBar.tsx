@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, Search, Star, User } from 'lucide-react'
+import { Compass, Flame, Search, Star, User } from 'lucide-react'
 
 const TABS = [
   { href: '/discover', label: 'Felfedezés', icon: Compass },
+  { href: '/trending', label: 'Trending', icon: Flame },
   { href: '/search', label: 'Keresés', icon: Search },
   { href: '/rated', label: 'Értékeléseim', icon: Star },
   { href: '/profile', label: 'Profil', icon: User },
@@ -29,7 +30,7 @@ export default function BottomNavBar() {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`relative flex flex-col items-center justify-center rounded-2xl px-3 py-1 transition-all ${
+            className={`relative flex flex-col items-center justify-center rounded-2xl px-2 py-1 transition-all ${
               isActive ? 'text-[#FF5B37]' : 'text-neutral-400 hover:text-neutral-600'
             }`}
           >

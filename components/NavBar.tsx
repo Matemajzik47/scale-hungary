@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Compass, Search, Star, User as UserIcon } from 'lucide-react'
+import { Compass, Flame, Search, Star, User as UserIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ScaleLogo } from '@/components/ScaleLogo'
 import type { User } from '@supabase/supabase-js'
 
 const TABS = [
   { href: '/discover', label: 'Felfedezés', icon: Compass },
+  { href: '/trending', label: 'Trending', icon: Flame },
   { href: '/search', label: 'Keresés', icon: Search },
   { href: '/rated', label: 'Értékeléseim', icon: Star },
 ] as const

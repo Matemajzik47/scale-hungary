@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react'
 import { Flame, Calendar, Star, Disc3 } from 'lucide-react'
 import { getTierForRatings } from '@/lib/tiers'
+import { Reveal } from '@/components/landing/Reveal'
 import { CardBackgroundButton } from '@/components/profile/CardBackgroundButton'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
 import type { ProfileData } from '@/lib/profileData'
@@ -27,6 +28,7 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
 
   return (
     <>
+      <Reveal>
       <header className="flex items-center justify-between pb-0.5 pt-1">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-tr from-[#FF5B37] via-[#FF8F68] to-neutral-200 p-[2px] shadow-sm">
@@ -48,9 +50,11 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
           <span className="text-[10px] font-bold uppercase tracking-tight">{tier.label}</span>
         </div>
       </header>
+      </Reveal>
 
       {socialSlot}
 
+      <Reveal delay={0.08}>
       <MusicIdCard
         username={profile.username}
         tierLabel={tier.label}
@@ -61,6 +65,7 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
         bgUrl={profile.card_bg_url}
         bgPos={posFromProfile(profile)}
       />
+      </Reveal>
       {onCardBgChange && (
         <CardBackgroundButton
           userId={profile.id}
@@ -71,6 +76,7 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
       )}
 
       {topAlbums.length > 0 && (
+        <Reveal delay={0.12}>
         <section className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between px-0.5">
             <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
@@ -111,8 +117,10 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
             ))}
           </div>
         </section>
+        </Reveal>
       )}
 
+      <Reveal delay={0.16}>
       <section className="grid grid-cols-3 gap-2 pt-0.5">
         <div className="flex flex-col items-center justify-center gap-0.5 rounded-2xl border border-neutral-200/80 bg-white p-2.5 text-center shadow-sm">
           <span className="text-[10px] font-bold uppercase tracking-tight text-neutral-400">
@@ -141,6 +149,7 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
           <span className="mt-0.5 font-mono text-xs font-bold text-neutral-800">{joinedLabel}</span>
         </div>
       </section>
+      </Reveal>
     </>
   )
 }
