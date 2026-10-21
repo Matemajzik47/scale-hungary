@@ -40,12 +40,28 @@ const REPAIR_RETRY_DAYS = 30
 // A backfill ezeken a dátumsávokon halad végig SORBAN — előbb a legújabb
 // évtized, csak utána a régebbiek. Így az "utóbbi 10 év" mindig előbb
 // épül fel, mint az azt megelőző korszakok.
-const BACKFILL_RANGES: { from: string; to: string }[] = [
-  { from: '2016-01-01', to: '2030-12-31' }, // elmúlt ~10 év (puha felső határ)
-  { from: '2000-01-01', to: '2015-12-31' },
-  { from: '1980-01-01', to: '1999-12-31' },
-  { from: '1900-01-01', to: '1979-12-31' },
-]
+// A MusicBrainz keresője egy lekérdezésben legfeljebb az első 500 találatot adja,
+// ezért a sávok kicsik: a friss évek fél évesek, a régebbiek egész évesek, a
+// legrégebbiek évtizedesek. Így egy sávban nem lesz 500-nál több találat.
+const MB_MAX_RESULTS = 500
+
+function buildBackfillRanges(): { from: string; to: string }[] {
+  const out: { from: string; to: string }[] = []
+  const thisYear = new Date().getFullYear()
+  for (let y = thisYear; y >= 2010; y--) {
+    out.push({ from: `${y}-07-01`, to: `${y}-12-31` })
+    out.push({ from: `${y}-01-01`, to: `${y}-06-30` })
+  }
+  for (let y = 2009; y >= 1980; y--) {
+    out.push({ from: `${y}-01-01`, to: `${y}-12-31` })
+  }
+  for (let d = 1970; d >= 1900; d -= 10) {
+    out.push({ from: `${d}-01-01`, to: `${d + 9}-12-31` })
+  }
+  return out
+}
+
+const BACKFILL_RANGES = buildBackfillRanges()
 
 type SyncSummary = {
   processed: number
@@ -67,6 +83,18 @@ function createSummary(): SyncSummary {
     skipped: 0,
     errors: [],
   }
+}
+
+/**
+ * A MusicBrainz néha csak évet ("2026") vagy évet és hónapot ("2026-05") ad meg,
+ * az adatbázis date oszlopa viszont teljes dátumot vár. Ezt egészítjük ki.
+ */
+function normalizeDate(value: string | undefined): string | null {
+  if (!value) return null
+  if (/^\d{4}$/.test(value)) return `${value}-01-01`
+  if (/^\d{4}-\d{2}$/.test(value)) return `${value}-01`
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+  return null
 }
 
 function errorMessage(err: unknown): string {
@@ -115,7 +143,8 @@ async function processRelease(release: MbRelease, summary: SyncSummary) {
 
     const spotifyMatch = await searchSpotifyAlbum(release.artistName, release.title)
 
-    const releaseDate = release.date ? new Date(release.date) : new Date()
+    const normalizedDate = normalizeDate(release.date)
+    const releaseDate = normalizedDate ? new Date(normalizedDate) : new Date()
     const releaseWeek = getIsoWeekString(releaseDate)
 
     const { data: newAlbum, error: albumError } = await supabaseAdmin
@@ -123,7 +152,7 @@ async function processRelease(release: MbRelease, summary: SyncSummary) {
       .insert({
         artist_id: artist.id,
         title: release.title,
-        release_date: release.date ?? null,
+        release_date: normalizedDate,
         cover_url: spotifyMatch?.coverUrl ?? null,
         spotify_album_id: spotifyMatch?.spotifyAlbumId ?? null,
         release_week: releaseWeek,
@@ -185,19 +214,23 @@ async function runBackfillBatch(summary: SyncSummary) {
   }
 
   const range = BACKFILL_RANGES[rangeIndex]
-  const { releases, total } = await fetchHungarianReleasesPageInRange(
-    range.from,
-    range.to,
-    offset,
-    BACKFILL_PAGE_SIZE
-  )
+  // A MusicBrainz az első 500 találatnál többet nem ad egy sávból
+  const pageSize = Math.min(BACKFILL_PAGE_SIZE, MB_MAX_RESULTS - offset)
+
+  let releases: MbRelease[] = []
+  let total = 0
+  if (pageSize > 0) {
+    const page = await fetchHungarianReleasesPageInRange(range.from, range.to, offset, pageSize)
+    releases = page.releases
+    total = Math.min(page.total, MB_MAX_RESULTS)
+  }
 
   for (const release of releases) {
     await processRelease(release, summary)
   }
 
   const nextOffset = offset + releases.length
-  const rangeFinished = releases.length === 0 || nextOffset >= total
+  const rangeFinished = pageSize <= 0 || releases.length === 0 || nextOffset >= total
 
   if (rangeFinished) {
     rangeIndex += 1
@@ -215,6 +248,22 @@ async function runBackfillBatch(summary: SyncSummary) {
     backfill_done: done,
     updated_at: new Date().toISOString(),
   })
+}
+
+/**
+ * Az utolsó futás összegzését eltesszük a sync_state táblába, hogy a Supabase
+ * Table Editorban (sync_state -> last_run) a Vercel logok nélkül is látszódjon,
+ * mi történt (és ha hiba volt, mi volt az). Hiba esetén csendben továbblépünk.
+ */
+async function saveLastRun(summary: SyncSummary) {
+  try {
+    await supabaseAdmin
+      .from('sync_state')
+      .update({ last_run: summary, last_run_at: new Date().toISOString() })
+      .eq('id', 'catalog_backfill')
+  } catch {
+    // az összegzés mentése nem lehet fontosabb, mint maga a szinkron
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -236,6 +285,7 @@ export async function GET(request: NextRequest) {
   if (waitForResult) {
     const summary = createSummary()
     await runSync(summary)
+    await saveLastRun(summary)
     // Ha semmi sem sikerült, és csak hibák vannak, jelezzük 502-vel
     const failed = summary.errors.length > 0 && summary.processed === 0 && summary.skipped === 0
     return NextResponse.json(
@@ -247,6 +297,7 @@ export async function GET(request: NextRequest) {
   after(async () => {
     const summary = createSummary()
     await runSync(summary)
+    await saveLastRun(summary)
     const log = summary.errors.length > 0 ? console.error : console.log
     log('[sync-catalog] kész', JSON.stringify(summary))
   })
