@@ -47,7 +47,7 @@ export default function SearchPage() {
       const { data: albumsData, error } = await supabase
         .from('albums')
         .select('id, title, cover_url, spotify_album_id, artists(id, name), tracks(id, title, spotify_track_id)')
-        .order('release_date', { ascending: false })
+        .order('release_date', { ascending: false, nullsFirst: false })
 
       if (!error && albumsData) {
         const flatTracks: {
