@@ -12,6 +12,9 @@ const MB_MIN_GAP_MS = 1100
 const MB_MAX_ATTEMPTS = 4
 let lastMbRequestAt = 0
 
+// Nem csak teljes albumok: a legfrissebb zenék jellemzően kislemezek (single) és EP-k.
+const TYPE_FILTER = '(primarytype:Album OR primarytype:EP OR primarytype:Single)'
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function mbFetchJson(url: string): Promise<unknown> {
@@ -79,21 +82,30 @@ function mapRawRelease(r: MbRawRelease): MbRelease {
  * a "magyar kiadás" fogalmára induláskor).
  */
 export async function fetchRecentHungarianReleases(
-  daysBack = 180,
-  limit = 25
+  daysBack = 30,
+  maxResults = 200
 ): Promise<MbRelease[]> {
   const sinceDate = new Date()
   sinceDate.setDate(sinceDate.getDate() - daysBack)
   const sinceStr = sinceDate.toISOString().split('T')[0]
 
-  const query = `country:HU AND date:[${sinceStr} TO *] AND primarytype:Album`
-  const url = `${MB_BASE_URL}/release/?query=${encodeURIComponent(
-    query
-  )}&fmt=json&limit=${limit}`
+  const query = `country:HU AND date:[${sinceStr} TO *] AND ${TYPE_FILTER}`
+  const pageSize = 100
+  const out: MbRelease[] = []
 
-  const data = (await mbFetchJson(url)) as { releases?: MbRawRelease[] }
+  // A MusicBrainz nem tud "legújabb elöl" sorrendet adni, ezért az egész
+  // időszakot (több oldalon) behozzuk, így a legfrissebb sem maradhat ki.
+  for (let offset = 0; offset < maxResults; offset += pageSize) {
+    const url = `${MB_BASE_URL}/release/?query=${encodeURIComponent(
+      query
+    )}&fmt=json&limit=${pageSize}&offset=${offset}`
+    const data = (await mbFetchJson(url)) as { releases?: MbRawRelease[]; count?: number }
+    const page = (data.releases ?? []).map(mapRawRelease)
+    out.push(...page)
+    if (page.length < pageSize) break
+  }
 
-  return (data.releases ?? []).map(mapRawRelease)
+  return out
 }
 
 export interface MbReleasePage {
@@ -117,7 +129,7 @@ export async function fetchHungarianReleasesPageInRange(
   offset: number,
   limit = 50
 ): Promise<MbReleasePage> {
-  const query = `country:HU AND primarytype:Album AND date:[${fromDate} TO ${toDate}]`
+  const query = `country:HU AND ${TYPE_FILTER} AND date:[${fromDate} TO ${toDate}]`
   const url = `${MB_BASE_URL}/release/?query=${encodeURIComponent(
     query
   )}&fmt=json&limit=${limit}&offset=${offset}`
