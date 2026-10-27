@@ -9,6 +9,7 @@ import {
   type MbRelease,
 } from '@/lib/musicbrainz'
 import {
+  SpotifyRateLimitError,
   searchSpotifyAlbum,
   getArtistReleases,
   getAlbumTracks,
@@ -250,7 +251,14 @@ async function processRelease(release: MbRelease, summary: SyncSummary) {
       summary.newArtists++
     }
 
-    const spotifyMatch = await searchSpotifyAlbum(release.artistName, release.title)
+    // Ha a Spotify éppen korlátoz, a kiadás Spotify nélkül is bekerül (helyőrző dallal),
+    // a Spotify-pótlás később kiegészíti a borítóval és a valódi dallal.
+    let spotifyMatch: Awaited<ReturnType<typeof searchSpotifyAlbum>> = null
+    try {
+      spotifyMatch = await searchSpotifyAlbum(release.artistName, release.title)
+    } catch (e) {
+      if (!(e instanceof SpotifyRateLimitError)) throw e
+    }
 
     const normalizedDate = normalizeDate(release.date)
     const releaseDate = normalizedDate ? new Date(normalizedDate) : new Date()
@@ -487,6 +495,11 @@ async function runArtistWatch(summary: SyncSummary, hasTime: () => boolean) {
         .eq('id', artist.id)
       summary.watchedArtists++
     } catch (err) {
+      if (err instanceof SpotifyRateLimitError) {
+        // Egyetlen jelzés, és megállunk: a maradék előadó a következő futásnál kerül sorra
+        summary.errors.push(`Előadó-figyelés megállt (${artist.name}): ${errorMessage(err)}`)
+        break
+      }
       summary.errors.push(`Előadó-figyelés (${artist.name}): ${errorMessage(err)}`)
     }
   }
@@ -721,6 +734,10 @@ async function runSpotifyRepair(summary: SyncSummary) {
         .eq('id', album.id)
     } catch (err) {
       // Hibánál nem jelöljük ellenőrzöttnek, a következő futás újra megpróbálja
+      if (err instanceof SpotifyRateLimitError) {
+        summary.errors.push(`Pótlás megállt (${album.title}): ${errorMessage(err)}`)
+        break
+      }
       summary.errors.push(`Pótlás (${album.title}): ${errorMessage(err)}`)
     }
   }
