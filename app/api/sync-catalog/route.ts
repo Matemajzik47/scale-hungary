@@ -8,7 +8,12 @@ import {
   type ArtistOrigin,
   type MbRelease,
 } from '@/lib/musicbrainz'
-import { searchSpotifyAlbum } from '@/lib/spotify-server'
+import {
+  searchSpotifyAlbum,
+  getArtistReleases,
+  getAlbumTracks,
+  findSpotifyArtistId,
+} from '@/lib/spotify-server'
 import { getIsoWeekString } from '@/lib/week'
 
 /**
@@ -93,6 +98,7 @@ type SyncSummary = {
   filteredOut: number
   auditedArtists: number
   removedArtists: number
+  watchedArtists: number
   skipped: number
   errors: string[]
 }
@@ -107,6 +113,7 @@ function createSummary(): SyncSummary {
     filteredOut: 0,
     auditedArtists: 0,
     removedArtists: 0,
+    watchedArtists: 0,
     skipped: 0,
     errors: [],
   }
@@ -352,7 +359,130 @@ async function runBackfillBatch(summary: SyncSummary) {
   })
 }
 
-const AUDIT_BATCH_SIZE = 6
+const AUDIT_BATCH_SIZE = 20
+
+// Ennyi előadót nézünk át egy futásnál friss kiadások után
+const WATCH_BATCH_SIZE = 20
+// Csak az ennél újabb (nap) kiadásokat vesszük át előadó-figyelésből
+const WATCH_RECENT_DAYS = 90
+
+function spotifyDateToIso(value: string): string {
+  if (/^\d{4}$/.test(value)) return `${value}-01-01`
+  if (/^\d{4}-\d{2}$/.test(value)) return `${value}-01`
+  return value
+}
+
+/**
+ * Előadó-figyelés: a katalógusban lévő előadók legfrissebb kiadásait közvetlenül a
+ * Spotify-tól kérdezi le. A MusicBrainz késik, és a digitális kislemezeket gyakran nem
+ * magyar kiadásként tárolja, így az új dalok ott akár napokig hiányozhatnak. A
+ * legrégebben ellenőrzött előadók kerülnek sorra, így a teljes lista körbeér.
+ */
+async function runArtistWatch(summary: SyncSummary, hasTime: () => boolean) {
+  const { data: artists } = await supabaseAdmin
+    .from('artists')
+    .select('id, name, spotify_artist_id')
+    // csak az eredetük szerint már ellenőrzött előadókat figyeljük, hogy külföldiek ne jöjjenek be
+    .not('origin_checked_at', 'is', null)
+    .order('releases_checked_at', { ascending: true, nullsFirst: true })
+    .limit(WATCH_BATCH_SIZE)
+
+  const recentFrom = new Date(Date.now() - WATCH_RECENT_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10)
+
+  for (const artist of artists ?? []) {
+    if (!hasTime()) break
+    try {
+      let spotifyArtistId: string | null = artist.spotify_artist_id
+
+      if (!spotifyArtistId) {
+        const { data: ownAlbums } = await supabaseAdmin.from('albums').select('title').eq('artist_id', artist.id).limit(10)
+        spotifyArtistId = await findSpotifyArtistId(
+          artist.name,
+          (ownAlbums ?? []).map((a) => a.title)
+        )
+        if (spotifyArtistId) {
+          // ha az azonosító már másnál szerepel, nem baj, a figyelést enélkül is tudjuk folytatni
+          await supabaseAdmin.from('artists').update({ spotify_artist_id: spotifyArtistId }).eq('id', artist.id)
+        }
+      }
+
+      if (spotifyArtistId) {
+        const releases = await getArtistReleases(spotifyArtistId)
+
+        for (const rel of releases) {
+          const isoDate = spotifyDateToIso(rel.releaseDate)
+          if (isoDate < recentFrom) continue
+
+          const { data: bySpotify } = await supabaseAdmin
+            .from('albums')
+            .select('id')
+            .eq('spotify_album_id', rel.id)
+            .maybeSingle()
+          if (bySpotify) continue
+
+          const { data: byTitle } = await supabaseAdmin
+            .from('albums')
+            .select('id, spotify_album_id')
+            .eq('artist_id', artist.id)
+            .eq('title', rel.title)
+            .maybeSingle()
+
+          const tracks = await getAlbumTracks(rel.id)
+          let albumId: string
+
+          if (byTitle) {
+            // a MusicBrainz-ből már megvan, csak a Spotify-adat hiányzott
+            if (byTitle.spotify_album_id) continue
+            const { error } = await supabaseAdmin
+              .from('albums')
+              .update({ spotify_album_id: rel.id, cover_url: rel.coverUrl })
+              .eq('id', byTitle.id)
+            if (error) throw error
+            albumId = byTitle.id
+          } else {
+            const { data: created, error } = await supabaseAdmin
+              .from('albums')
+              .insert({
+                artist_id: artist.id,
+                title: rel.title,
+                release_date: isoDate,
+                cover_url: rel.coverUrl,
+                spotify_album_id: rel.id,
+                release_week: getIsoWeekString(new Date(isoDate)),
+              })
+              .select('id')
+              .single()
+            if (error) throw error
+            albumId = created.id
+            summary.newAlbums++
+          }
+
+          const { count } = await supabaseAdmin
+            .from('tracks')
+            .select('*', { count: 'exact', head: true })
+            .eq('album_id', albumId)
+          if ((count ?? 0) === 0 && tracks.length > 0) {
+            const { error: tracksError } = await supabaseAdmin
+              .from('tracks')
+              .insert(tracks.map((t) => ({ album_id: albumId, title: t.title, spotify_track_id: t.id })))
+            if (tracksError) throw tracksError
+            summary.newTracks += tracks.length
+          }
+        }
+      }
+
+      await supabaseAdmin
+        .from('artists')
+        .update({ releases_checked_at: new Date().toISOString() })
+        .eq('id', artist.id)
+      summary.watchedArtists++
+    } catch (err) {
+      summary.errors.push(`Előadó-figyelés (${artist.name}): ${errorMessage(err)}`)
+    }
+  }
+}
 
 async function artistHasRatings(artistId: string): Promise<boolean> {
   const { data: albums } = await supabaseAdmin.from('albums').select('id').eq('artist_id', artistId)
@@ -575,6 +705,21 @@ async function runSync(summary: SyncSummary) {
     summary.errors.push(`E heti kiadások: ${errorMessage(err)}`)
   }
 
+  // 1a. Korábban felvett előadók eredetének ellenőrzése (külföldiek kiszedése).
+  // Az ellenőrzött előadók kerülnek be a figyelésbe.
+  try {
+    if (hasTime()) await runArtistAudit(summary)
+  } catch (err) {
+    summary.errors.push(`Előadó-átvizsgálás: ${errorMessage(err)}`)
+  }
+
+  // 1b. Előadó-figyelés: a katalógus előadóinak friss kiadásai közvetlenül a Spotify-tól
+  try {
+    await runArtistWatch(summary, hasTime)
+  } catch (err) {
+    summary.errors.push(`Előadó-figyelés: ${errorMessage(err)}`)
+  }
+
   // 2. Az elmúlt 45 nap többi kiadása (a már meglévőket gyorsan átugorja)
   try {
     const recentReleases = newestFirst(await fetchRecentHungarianReleases(45, 200))
@@ -601,10 +746,4 @@ async function runSync(summary: SyncSummary) {
     summary.errors.push(`Pótlás: ${errorMessage(err)}`)
   }
 
-  // 5. Korábban felvett előadók eredetének ellenőrzése (külföldiek kiszedése)
-  try {
-    if (hasTime()) await runArtistAudit(summary)
-  } catch (err) {
-    summary.errors.push(`Előadó-átvizsgálás: ${errorMessage(err)}`)
-  }
 }
