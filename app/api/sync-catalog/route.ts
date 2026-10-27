@@ -283,6 +283,14 @@ async function processRelease(release: MbRelease, summary: SyncSummary) {
 
       if (tracksError) throw tracksError
       summary.newTracks += tracksToInsert.length
+    } else {
+      // Nincs (még) Spotify-egyezés: az önálló szám (kislemez) így is megjelenik a
+      // Felfedezésben, a Spotify-pótlás később cseréli a valódi dalra.
+      const { error: placeholderError } = await supabaseAdmin
+        .from('tracks')
+        .insert({ album_id: newAlbum.id, title: release.title, spotify_track_id: null })
+      if (placeholderError) throw placeholderError
+      summary.newTracks++
     }
 
     summary.processed++
@@ -662,14 +670,46 @@ async function runSpotifyRepair(summary: SyncSummary) {
         if (updateError) throw updateError
 
         if (match.trackIds.length > 0) {
-          const { error: tracksError } = await supabaseAdmin.from('tracks').insert(
-            match.trackIds.map((t) => ({
-              album_id: album.id,
-              title: t.title,
-              spotify_track_id: t.id,
-            }))
-          )
-          if (tracksError) throw tracksError
+          // A korábbi helyőrző (Spotify nélküli) dalt a valódi váltja: egy számnál
+          // frissítjük (az értékelések megmaradnak), többnél az értékeletleneket töröljük.
+          const { data: placeholders } = await supabaseAdmin
+            .from('tracks')
+            .select('id')
+            .eq('album_id', album.id)
+            .is('spotify_track_id', null)
+          const placeholderIds = (placeholders ?? []).map((p) => p.id)
+
+          let toInsert = match.trackIds
+          if (placeholderIds.length > 0) {
+            if (match.trackIds.length === 1) {
+              const only = match.trackIds[0]
+              const { error: updError } = await supabaseAdmin
+                .from('tracks')
+                .update({ title: only.title, spotify_track_id: only.id })
+                .eq('id', placeholderIds[0])
+              if (updError) throw updError
+              toInsert = []
+            } else {
+              const { data: rated } = await supabaseAdmin
+                .from('ratings')
+                .select('track_id')
+                .in('track_id', placeholderIds)
+              const ratedSet = new Set((rated ?? []).map((r) => r.track_id))
+              const deletable = placeholderIds.filter((id) => !ratedSet.has(id))
+              if (deletable.length > 0) await supabaseAdmin.from('tracks').delete().in('id', deletable)
+            }
+          }
+
+          if (toInsert.length > 0) {
+            const { error: tracksError } = await supabaseAdmin.from('tracks').insert(
+              toInsert.map((t) => ({
+                album_id: album.id,
+                title: t.title,
+                spotify_track_id: t.id,
+              }))
+            )
+            if (tracksError) throw tracksError
+          }
           summary.newTracks += match.trackIds.length
         }
         summary.repairedAlbums++
