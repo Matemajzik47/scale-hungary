@@ -53,6 +53,14 @@ const MAX_WAIT_MS = 8000 // ennél hosszabb Retry-After esetén nem várunk, fel
 let blockedUntil = 0
 let lastRequestAt = 0
 
+/** A tiltás vége (ms). A szinkron elmenti az adatbázisba, így új szerverpéldány sem próbálkozik. */
+export function getSpotifyBlockedUntil(): number {
+  return blockedUntil
+}
+export function setSpotifyBlockedUntil(untilMs: number) {
+  blockedUntil = Math.max(blockedUntil, untilMs)
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** Spotify GET kérés ütemezéssel; 429-nél a Retry-After szerint egyszer vár, utána feladja. */
