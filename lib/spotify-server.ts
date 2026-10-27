@@ -46,6 +46,8 @@ type SpotifyAlbumItem = {
   name: string
   images?: { url: string }[]
   artists?: { name: string }[]
+  release_date?: string
+  album_type?: string
 }
 
 type SpotifyTrackItem = { id: string; name: string }
@@ -147,4 +149,77 @@ export async function searchSpotifyAlbum(
       title: t.name,
     })),
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// Előadó-figyelés: a Spotify a megjelenés napján tudja az új kiadásokat, a
+// MusicBrainz (közösségi adatbázis) viszont napokat késhet, és a digitális
+// kislemezeket sokszor nem "HU", hanem "világszerte" országgal tárolja.
+// ---------------------------------------------------------------------------
+
+export interface SpotifyArtistRelease {
+  id: string
+  title: string
+  releaseDate: string // "2026-10-26", "2026-10" vagy "2026"
+  coverUrl: string | null
+}
+
+async function spotifyGet(url: string, token: string): Promise<unknown> {
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) throw new Error(`Spotify hiba: ${res.status} ${res.statusText}`)
+  return res.json()
+}
+
+/** Egy előadó legfrissebb albumai és kislemezei (a legújabb elöl). */
+export async function getArtistReleases(spotifyArtistId: string): Promise<SpotifyArtistRelease[]> {
+  const token = await getSpotifyToken()
+  const data = (await spotifyGet(
+    `https://api.spotify.com/v1/artists/${spotifyArtistId}/albums?include_groups=album,single&market=HU&limit=10`,
+    token
+  )) as { items?: SpotifyAlbumItem[] }
+
+  return (data.items ?? [])
+    .map((a) => ({
+      id: a.id,
+      title: a.name,
+      releaseDate: a.release_date ?? '',
+      coverUrl: a.images?.[0]?.url ?? null,
+    }))
+    .filter((a) => a.releaseDate)
+    .sort((a, b) => b.releaseDate.localeCompare(a.releaseDate))
+}
+
+export async function getAlbumTracks(spotifyAlbumId: string): Promise<{ id: string; title: string }[]> {
+  const token = await getSpotifyToken()
+  const data = (await spotifyGet(
+    `https://api.spotify.com/v1/albums/${spotifyAlbumId}/tracks?market=HU&limit=50`,
+    token
+  )) as { items?: SpotifyTrackItem[] }
+  return (data.items ?? []).map((t) => ({ id: t.id, title: t.name }))
+}
+
+/**
+ * Megkeresi az előadó Spotify-azonosítóját. Csak akkor fogadja el, ha a név pontosan
+ * egyezik (ékezetek és kisbetű-nagybetű nélkül), és ha több ilyen is van, akkor azt,
+ * amelynek az albumai között szerepel valamelyik nálunk már meglévő album címe.
+ */
+export async function findSpotifyArtistId(artistName: string, knownAlbumTitles: string[]): Promise<string | null> {
+  const token = await getSpotifyToken()
+  const data = (await spotifyGet(
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(`artist:${artistName}`)}&type=artist&market=HU&limit=5`,
+    token
+  )) as { artists?: { items?: { id: string; name: string }[] } }
+
+  const wanted = normalize(artistName)
+  const exact = (data.artists?.items ?? []).filter((a) => normalize(a.name) === wanted)
+  if (exact.length === 0) return null
+  if (exact.length === 1) return exact[0].id
+
+  const known = new Set(knownAlbumTitles.map((t) => normalize(cleanTitle(t))))
+  for (const candidate of exact) {
+    const releases = await getArtistReleases(candidate.id)
+    if (releases.some((r) => known.has(normalize(cleanTitle(r.title))))) return candidate.id
+  }
+  return null
 }
