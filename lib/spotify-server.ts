@@ -35,6 +35,48 @@ async function getSpotifyToken(): Promise<string> {
   return cachedToken.token
 }
 
+/**
+ * A Spotify korlátozta a kéréseket (429). A hívó ilyenkor abbahagyja a Spotify-os munkát,
+ * és a következő futás folytatja — a további próbálkozás csak hosszabbítaná a tiltást.
+ */
+export class SpotifyRateLimitError extends Error {
+  retryAfterSec: number
+  constructor(retryAfterSec: number) {
+    super(`Spotify korlát (429), ${retryAfterSec} mp múlva próbálható újra`)
+    this.name = 'SpotifyRateLimitError'
+    this.retryAfterSec = retryAfterSec
+  }
+}
+
+const MIN_GAP_MS = 220 // kérések közti minimális szünet (kb. 4-5 kérés/mp)
+const MAX_WAIT_MS = 8000 // ennél hosszabb Retry-After esetén nem várunk, feladjuk
+let blockedUntil = 0
+let lastRequestAt = 0
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/** Spotify GET kérés ütemezéssel; 429-nél a Retry-After szerint egyszer vár, utána feladja. */
+async function spotifyRequest(url: string, token: string): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    if (Date.now() < blockedUntil) {
+      throw new SpotifyRateLimitError(Math.ceil((blockedUntil - Date.now()) / 1000))
+    }
+    const wait = lastRequestAt + MIN_GAP_MS - Date.now()
+    if (wait > 0) await sleep(wait)
+    lastRequestAt = Date.now()
+
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    if (res.status !== 429) return res
+
+    const retryAfter = Number(res.headers.get('retry-after')) || 5
+    if (attempt >= 1 || retryAfter * 1000 > MAX_WAIT_MS) {
+      blockedUntil = Date.now() + retryAfter * 1000
+      throw new SpotifyRateLimitError(retryAfter)
+    }
+    await sleep(retryAfter * 1000)
+  }
+}
+
 export interface SpotifyAlbumMatch {
   spotifyAlbumId: string
   coverUrl: string | null
@@ -95,7 +137,7 @@ async function searchAlbums(query: string, token: string): Promise<SpotifyAlbumI
     query
   )}&type=album&market=HU&limit=5`
 
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await spotifyRequest(url, token)
   if (!res.ok) {
     throw new Error(`Spotify search hiba: ${res.status} ${res.statusText}`)
   }
@@ -135,9 +177,9 @@ export async function searchSpotifyAlbum(
   if (!album) return null
 
   // Track-lista lekérése az albumhoz
-  const tracksRes = await fetch(
+  const tracksRes = await spotifyRequest(
     `https://api.spotify.com/v1/albums/${album.id}/tracks?market=HU&limit=50`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    token
   )
   const tracksData = tracksRes.ok ? await tracksRes.json() : { items: [] }
 
@@ -166,7 +208,7 @@ export interface SpotifyArtistRelease {
 }
 
 async function spotifyGet(url: string, token: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  const res = await spotifyRequest(url, token)
   if (!res.ok) throw new Error(`Spotify hiba: ${res.status} ${res.statusText}`)
   return res.json()
 }
