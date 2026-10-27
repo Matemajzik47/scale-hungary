@@ -151,7 +151,8 @@ export function Scroller({
               )}
             </div>
             <div className="mt-1.5 truncate text-[13px] font-bold text-neutral-900">{t.title}</div>
-            <div className="truncate text-xs text-neutral-500">{t.note ?? t.artist}</div>
+            <div className="truncate text-xs text-neutral-500">{t.artist}</div>
+            {t.note && <div className="truncate font-mono text-[10px] font-semibold text-[#FF5B37]">{t.note}</div>}
           </Link>
         </Reveal>
       ))}
