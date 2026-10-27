@@ -4,6 +4,7 @@ import "./globals.css";
 import NavBar from "@/components/NavBar";
 import BottomNavBar from "@/components/BottomNavBar";
 import { PwaRegister } from "@/components/pwa/PwaRegister";
+import { PlayerProvider } from "@/components/player/PlayerProvider";
 
 // Törzsszöveg: modern, letisztult, jól olvasható (ő/ű miatt latin-ext)
 const jakarta = Manrope({
@@ -42,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col pb-16 sm:pb-0">
         <NavBar />
-        {children}
+        <PlayerProvider>{children}</PlayerProvider>
         <BottomNavBar />
         <PwaRegister />
       </body>

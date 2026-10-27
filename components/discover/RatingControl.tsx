@@ -3,6 +3,8 @@
 interface RatingControlProps {
   rating: number
   onChange: (val: number) => void
+  // A szöveg a csúszka alatt; null esetén nem jelenik meg (pl. a mini lejátszó értékelő lapján)
+  hint?: string | null
 }
 
 const ACCENT = '#FF5B37'
@@ -16,7 +18,11 @@ function getRatingLabel(score: number) {
   return 'Nem nekem való'
 }
 
-export function RatingControl({ rating, onChange }: RatingControlProps) {
+export function RatingControl({
+  rating,
+  onChange,
+  hint = 'Húzd a képet jobbra a mentéshez',
+}: RatingControlProps) {
   return (
     <div className="flex w-full flex-col gap-1.5">
       <div className="flex items-center justify-between">
@@ -52,7 +58,7 @@ export function RatingControl({ rating, onChange }: RatingControlProps) {
 
       <div className="flex items-center justify-between text-[11px] text-neutral-500">
         <span className="font-medium text-neutral-700">{getRatingLabel(rating)}</span>
-        <span className="text-[10px] text-neutral-400">Húzd a képet jobbra a mentéshez</span>
+        {hint && <span className="text-[10px] text-neutral-400">{hint}</span>}
       </div>
     </div>
   )

@@ -6,6 +6,7 @@ import { Star, Music } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
 import { Reveal } from '@/components/landing/Reveal'
+import { PlayButton } from '@/components/player/PlayButton'
 
 type RatingRow = {
   score: number
@@ -17,6 +18,7 @@ type TrackRow = {
   id: string
   title: string
   album_id: string
+  spotify_track_id: string | null
 }
 
 type AlbumRow = {
@@ -24,6 +26,7 @@ type AlbumRow = {
   title: string
   cover_url: string | null
   artist_id: string
+  spotify_album_id: string | null
 }
 
 type ArtistRow = {
@@ -37,6 +40,8 @@ type RatedItem = {
   albumTitle: string
   coverUrl: string | null
   artistName: string
+  spotifyTrackId: string | null
+  spotifyAlbumId: string | null
   rating: number
   ratedAt: string
 }
@@ -81,7 +86,7 @@ export default function RatedPage() {
       // 2. lépés: a hozzájuk tartozó dalok (cím + album_id)
       const { data: tracksData } = await supabase
         .from('tracks')
-        .select('id, title, album_id')
+        .select('id, title, album_id, spotify_track_id')
         .in('id', trackIds)
 
       const tracksById = new Map<string, TrackRow>()
@@ -94,7 +99,7 @@ export default function RatedPage() {
       // 3. lépés: az albumok (borító + artist_id)
       const { data: albumsData } = await supabase
         .from('albums')
-        .select('id, title, cover_url, artist_id')
+        .select('id, title, cover_url, artist_id, spotify_album_id')
         .in('id', albumIds.length > 0 ? albumIds : [''])
 
       const albumsById = new Map<string, AlbumRow>()
@@ -130,6 +135,8 @@ export default function RatedPage() {
             albumTitle: album?.title ?? '',
             coverUrl: album?.cover_url ?? null,
             artistName: artist?.name ?? 'Ismeretlen előadó',
+            spotifyTrackId: track.spotify_track_id,
+            spotifyAlbumId: album?.spotify_album_id ?? null,
             rating: Number(r.score),
             ratedAt: formatRatedAt(r.created_at),
           }
@@ -215,12 +222,25 @@ export default function RatedPage() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <div className="flex items-center gap-1 rounded-full bg-[#FF5B37] px-2 py-0.5 text-xs font-extrabold text-white shadow-sm">
-                  <Star className="h-3 w-3 fill-current" />
-                  <span>{item.rating.toFixed(1)}</span>
+              <div className="flex shrink-0 items-center gap-2.5">
+                <PlayButton
+                  track={{
+                    trackId: item.trackId,
+                    spotifyTrackId: item.spotifyTrackId,
+                    spotifyAlbumId: item.spotifyAlbumId,
+                    title: item.title,
+                    artist: item.artistName,
+                    coverUrl: item.coverUrl,
+                  }}
+                  className="h-8 w-8"
+                />
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1 rounded-full bg-[#FF5B37] px-2 py-0.5 text-xs font-extrabold text-white shadow-sm">
+                    <Star className="h-3 w-3 fill-current" />
+                    <span>{item.rating.toFixed(1)}</span>
+                  </div>
+                  <span className="text-[9px] text-neutral-400">{item.ratedAt}</span>
                 </div>
-                <span className="text-[9px] text-neutral-400">{item.ratedAt}</span>
               </div>
             </Link>
             </Reveal>

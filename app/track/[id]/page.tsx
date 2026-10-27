@@ -7,6 +7,7 @@ import { ChevronLeft, Disc3, Minus, Music, TrendingDown, TrendingUp, Users } fro
 import { supabase } from '@/lib/supabase'
 import { updateUserStats } from '@/lib/userStats'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
+import { PlayButton } from '@/components/player/PlayButton'
 
 type TrackRow = { id: string; title: string; album_id: string; spotify_track_id: string | null }
 type AlbumRow = { id: string; title: string; cover_url: string | null; artist_id: string }
@@ -161,6 +162,22 @@ export default function TrackPage() {
     load()
   }, [params.id])
 
+  // A mini lejátszóból adott értékelés itt is látszódjon
+  useEffect(() => {
+    function onRated(e: Event) {
+      const { trackId, score } = (e as CustomEvent<{ trackId: string; score: number }>).detail
+      if (trackId !== params.id || !userId) return
+      setMyScore(score)
+      setRatings((prev) => {
+        const existing = prev.find((r) => r.track_id === trackId && r.user_id === userId)
+        if (existing) return prev.map((r) => (r === existing ? { ...r, score } : r))
+        return [...prev, { track_id: trackId, user_id: userId, score, created_at: new Date().toISOString() }]
+      })
+    }
+    window.addEventListener('scale:rated', onRated)
+    return () => window.removeEventListener('scale:rated', onRated)
+  }, [params.id, userId])
+
   const trackRatings = useMemo(
     () => ratings.filter((r) => r.track_id === params.id),
     [ratings, params.id]
@@ -310,17 +327,17 @@ export default function TrackPage() {
         </button>
       </section>
 
-      {track.spotify_track_id && (
-        <iframe
-          title="Meghallgatás Spotify-on"
-          src={`https://open.spotify.com/embed/track/${track.spotify_track_id}`}
-          width="100%"
-          height="80"
-          loading="lazy"
-          allow="encrypted-media"
-          className="rounded-xl border-0"
-        />
-      )}
+      <PlayButton
+        variant="wide"
+        track={{
+          trackId: track.id,
+          spotifyTrackId: track.spotify_track_id,
+          spotifyAlbumId: null,
+          title: track.title,
+          artist: artistName,
+          coverUrl: album?.cover_url ?? null,
+        }}
+      />
 
       {albumTracks.length > 1 && (
         <section className="flex flex-col gap-2 pt-1">
@@ -349,6 +366,17 @@ export default function TrackPage() {
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <PlayButton
+                    track={{
+                      trackId: t.id,
+                      spotifyTrackId: t.spotify_track_id,
+                      spotifyAlbumId: null,
+                      title: t.title,
+                      artist: artistName,
+                      coverUrl: album?.cover_url ?? null,
+                    }}
+                    className="h-8 w-8"
+                  />
                   <TrendChip trend={computeTrend(rs)} compact />
                   <span className="font-mono text-sm font-black text-[#FF5B37]">
                     {a !== null ? a.toFixed(1) : '–'}

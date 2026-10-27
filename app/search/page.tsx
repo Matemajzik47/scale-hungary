@@ -6,6 +6,7 @@ import { Search as SearchIcon, Disc3, User as UserIcon } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { updateUserStats } from '@/lib/userStats'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
+import { PlayButton } from '@/components/player/PlayButton'
 import type { DiscoverTrack } from '@/types/discover'
 
 type SearchRow = {
@@ -50,6 +51,16 @@ export default function SearchPage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null))
+  }, [])
+
+  // A mini lejátszóból adott értékelés a listában is frissüljön
+  useEffect(() => {
+    function onRated(e: Event) {
+      const { trackId, score } = (e as CustomEvent<{ trackId: string; score: number }>).detail
+      setTracks((prev) => prev.map((t) => (t.id === trackId ? { ...t, userRating: score } : t)))
+    }
+    window.addEventListener('scale:rated', onRated)
+    return () => window.removeEventListener('scale:rated', onRated)
   }, [])
 
   // Gépelés közben rövid várakozás, hogy ne minden betűnél menjen kérés
@@ -251,6 +262,17 @@ export default function SearchPage() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1.5">
+                  <PlayButton
+                    track={{
+                      trackId: t.id,
+                      spotifyTrackId: t.spotify_track_id,
+                      spotifyAlbumId: t.album.spotify_album_id,
+                      title: t.title,
+                      artist: t.artist.name,
+                      coverUrl: t.album.cover_url,
+                    }}
+                    className="h-8 w-8"
+                  />
                   {t.userRating !== null && (
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-600">
                       Te: {t.userRating.toFixed(1)}

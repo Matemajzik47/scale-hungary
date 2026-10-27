@@ -58,6 +58,22 @@ body {
   animation: scale-pulse 1.8s infinite;
 }
 
+/* Lejátszás-gomb hangszínszóró animáció */
+@keyframes eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.eq-bar {
+  transform-origin: bottom;
+  animation: eq 0.9s ease-in-out infinite;
+}
+
 /* 3D kártya: enyhe lebegés a korong fölött */
 @keyframes card-float {
   0%,
@@ -84,10 +100,10 @@ body {
 @keyframes disc-glow {
   0%,
   100% {
-    box-shadow: 0 0 14px rgba(255, 91, 55, 0.35), inset 0 0 14px rgba(255, 91, 55, 0.2);
+    opacity: 0.25;
   }
   50% {
-    box-shadow: 0 0 30px rgba(255, 91, 55, 0.6), inset 0 0 22px rgba(255, 91, 55, 0.35);
+    opacity: 1;
   }
 }
 
@@ -163,7 +179,8 @@ body {
   .bg-wipe,
   .card-shadow,
   .disc-glow,
-  .card-sheen {
+  .card-sheen,
+  .eq-bar {
     animation: none;
   }
 }

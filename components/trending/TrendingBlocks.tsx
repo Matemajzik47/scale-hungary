@@ -4,7 +4,12 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { Flame, Music, Star } from 'lucide-react'
 import { Reveal } from '@/components/landing/Reveal'
+import { PlayButton } from '@/components/player/PlayButton'
 import type { TrackCardData } from '@/lib/trending'
+
+function playInput(t: TrackCardData) {
+  return { trackId: t.trackId, title: t.title, artist: t.artist, coverUrl: t.coverUrl }
+}
 
 export function SectionHeader({
   eyebrow,
@@ -77,9 +82,12 @@ export function TrendingList({ items, periodLabel }: { items: TrackCardData[]; p
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
           <div className="relative z-10 flex min-h-[200px] w-full flex-col justify-between">
-            <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[#FF5B37] px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider">
-              <Flame className="h-3 w-3" /> #1 {periodLabel}
-            </span>
+            <div className="flex items-start justify-between">
+              <span className="inline-flex w-fit items-center gap-1 rounded-full bg-[#FF5B37] px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider">
+                <Flame className="h-3 w-3" /> #1 {periodLabel}
+              </span>
+              <PlayButton track={playInput(first)} variant="overlay" />
+            </div>
             <div className="flex items-end justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate font-[family-name:var(--font-display)] text-2xl font-bold leading-tight">
@@ -108,6 +116,7 @@ export function TrendingList({ items, periodLabel }: { items: TrackCardData[]; p
                   <div className="truncate text-sm font-bold text-neutral-900">{t.title}</div>
                   <div className="truncate text-xs text-neutral-500">{t.artist}</div>
                 </div>
+                <PlayButton track={playInput(t)} className="h-8 w-8" />
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <ScoreChip value={t.avg} />
                   <span className="font-mono text-[10px] text-neutral-400">{t.count} értékelés</span>
@@ -149,6 +158,7 @@ export function Scroller({
                   <ScoreChip value={t.avg} />
                 </span>
               )}
+              <PlayButton track={playInput(t)} variant="overlay" className="absolute bottom-1.5 left-1.5 !h-8 !w-8" />
             </div>
             <div className="mt-1.5 truncate text-[13px] font-bold text-neutral-900">{t.title}</div>
             <div className="truncate text-xs text-neutral-500">{t.artist}</div>
