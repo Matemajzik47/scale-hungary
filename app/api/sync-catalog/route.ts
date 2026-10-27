@@ -3,6 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase-admin'
 import {
   fetchRecentHungarianReleases,
   fetchHungarianReleasesPageInRange,
+  fetchArtistOrigin,
+  findArtistIdByRelease,
+  type ArtistOrigin,
   type MbRelease,
 } from '@/lib/musicbrainz'
 import { searchSpotifyAlbum } from '@/lib/spotify-server'
@@ -87,6 +90,9 @@ type SyncSummary = {
   newAlbums: number
   newTracks: number
   repairedAlbums: number
+  filteredOut: number
+  auditedArtists: number
+  removedArtists: number
   skipped: number
   errors: string[]
 }
@@ -98,6 +104,9 @@ function createSummary(): SyncSummary {
     newAlbums: 0,
     newTracks: 0,
     repairedAlbums: 0,
+    filteredOut: 0,
+    auditedArtists: 0,
+    removedArtists: 0,
     skipped: 0,
     errors: [],
   }
@@ -134,6 +143,46 @@ function errorMessage(err: unknown): string {
     : JSON.stringify(err)
 }
 
+// Az egy futás alatt már megvizsgált előadók (hogy ne kérdezzük le újra)
+const originCache = new Map<string, ArtistOrigin>()
+
+/**
+ * Magyar-e az előadó? A MusicBrainz "country:HU" keresése a kiadás országára szűr,
+ * ezért külföldi előadók magyarországi kiadásai is bejöttek. A biztosan külföldi
+ * előadókat a skipped_artists táblában tartjuk számon, így nem kérdezzük újra őket.
+ */
+async function classifyArtist(mbArtistId: string, name: string): Promise<ArtistOrigin> {
+  const cached = originCache.get(mbArtistId)
+  if (cached) return cached
+
+  const { data: skipped } = await supabaseAdmin
+    .from('skipped_artists')
+    .select('mb_artist_id')
+    .eq('mb_artist_id', mbArtistId)
+    .maybeSingle()
+  if (skipped) {
+    originCache.set(mbArtistId, 'foreign')
+    return 'foreign'
+  }
+
+  const { data: known } = await supabaseAdmin
+    .from('artists')
+    .select('id')
+    .eq('mb_artist_id', mbArtistId)
+    .maybeSingle()
+  if (known) {
+    originCache.set(mbArtistId, 'hu')
+    return 'hu'
+  }
+
+  const origin = await fetchArtistOrigin(mbArtistId)
+  if (origin === 'foreign') {
+    await supabaseAdmin.from('skipped_artists').upsert({ mb_artist_id: mbArtistId, name })
+  }
+  originCache.set(mbArtistId, origin)
+  return origin
+}
+
 /**
  * Egyetlen MusicBrainz release feldolgozása: artist/album/track beszúrása,
  * ha még nem létezik. Ugyanaz a logika a friss és a backfill ágban is.
@@ -142,32 +191,56 @@ async function processRelease(release: MbRelease, summary: SyncSummary) {
   try {
     let { data: artist } = await supabaseAdmin
       .from('artists')
-      .select('id')
+      .select('id, mb_artist_id')
       .eq('name', release.artistName)
       .maybeSingle()
+
+    // Ha az album már megvan, nincs mit tenni (és nem terheljük a MusicBrainzet)
+    if (artist) {
+      const { data: existingAlbum } = await supabaseAdmin
+        .from('albums')
+        .select('id')
+        .eq('artist_id', artist.id)
+        .eq('title', release.title)
+        .maybeSingle()
+
+      if (existingAlbum) {
+        summary.skipped++
+        return
+      }
+    }
+
+    // Külföldi előadó magyarországi kiadását nem vesszük fel
+    if (release.artistId) {
+      const origin = await classifyArtist(release.artistId, release.artistName)
+      if (origin === 'foreign') {
+        summary.filteredOut++
+        return
+      }
+      // A már meglévő, azonosító nélküli előadónál eltesszük az ellenőrzés eredményét
+      if (artist && !artist.mb_artist_id) {
+        await supabaseAdmin
+          .from('artists')
+          .update({ mb_artist_id: release.artistId, origin_checked_at: new Date().toISOString() })
+          .eq('id', artist.id)
+      }
+    }
 
     if (!artist) {
       const { data: newArtist, error: artistError } = await supabaseAdmin
         .from('artists')
-        .insert({ name: release.artistName, country: 'HU' })
-        .select('id')
+        .insert({
+          name: release.artistName,
+          country: 'HU',
+          mb_artist_id: release.artistId ?? null,
+          origin_checked_at: release.artistId ? new Date().toISOString() : null,
+        })
+        .select('id, mb_artist_id')
         .single()
 
       if (artistError) throw artistError
       artist = newArtist
       summary.newArtists++
-    }
-
-    const { data: existingAlbum } = await supabaseAdmin
-      .from('albums')
-      .select('id')
-      .eq('artist_id', artist.id)
-      .eq('title', release.title)
-      .maybeSingle()
-
-    if (existingAlbum) {
-      summary.skipped++
-      return
     }
 
     const spotifyMatch = await searchSpotifyAlbum(release.artistName, release.title)
@@ -277,6 +350,85 @@ async function runBackfillBatch(summary: SyncSummary) {
     backfill_done: done,
     updated_at: new Date().toISOString(),
   })
+}
+
+const AUDIT_BATCH_SIZE = 6
+
+async function artistHasRatings(artistId: string): Promise<boolean> {
+  const { data: albums } = await supabaseAdmin.from('albums').select('id').eq('artist_id', artistId)
+  const albumIds = (albums ?? []).map((a) => a.id)
+  if (albumIds.length === 0) return false
+  const { data: tracks } = await supabaseAdmin.from('tracks').select('id').in('album_id', albumIds)
+  const trackIds = (tracks ?? []).map((t) => t.id)
+  if (trackIds.length === 0) return false
+  const { count } = await supabaseAdmin
+    .from('ratings')
+    .select('*', { count: 'exact', head: true })
+    .in('track_id', trackIds)
+  return (count ?? 0) > 0
+}
+
+/**
+ * A korábban (az eredet-ellenőrzés előtt) felvett előadók átvizsgálása: ha az előadó
+ * biztosan külföldi és még nem értékelte senki a dalait, törlődik a katalógusból.
+ * Ha már van értékelés a dalain, megmarad (ne vesszen el felhasználói adat).
+ * Kis adagokban halad, minden futásnál néhány előadót ellenőriz.
+ */
+async function runArtistAudit(summary: SyncSummary) {
+  const { data } = await supabaseAdmin
+    .from('artists')
+    .select('id, name, mb_artist_id')
+    .is('origin_checked_at', null)
+    .limit(AUDIT_BATCH_SIZE)
+
+  for (const artist of data ?? []) {
+    try {
+      let mbId: string | null = artist.mb_artist_id
+      if (!mbId) {
+        const { data: album } = await supabaseAdmin
+          .from('albums')
+          .select('title')
+          .eq('artist_id', artist.id)
+          .limit(1)
+          .maybeSingle()
+        mbId = album ? await findArtistIdByRelease(artist.name, album.title) : null
+      }
+
+      let origin: ArtistOrigin = 'unknown'
+      if (mbId) origin = await fetchArtistOrigin(mbId)
+
+      if (origin === 'foreign') {
+        if (mbId) await supabaseAdmin.from('skipped_artists').upsert({ mb_artist_id: mbId, name: artist.name })
+        if (await artistHasRatings(artist.id)) {
+          await supabaseAdmin
+            .from('artists')
+            .update({ origin_checked_at: new Date().toISOString() })
+            .eq('id', artist.id)
+        } else {
+          await supabaseAdmin.from('artists').delete().eq('id', artist.id)
+          summary.removedArtists++
+        }
+      } else {
+        // Magyar vagy ismeretlen: megtartjuk, és ha megvan az azonosító, eltesszük
+        const update: { origin_checked_at: string; mb_artist_id?: string } = {
+          origin_checked_at: new Date().toISOString(),
+        }
+        if (mbId && !artist.mb_artist_id) update.mb_artist_id = mbId
+        const { error } = await supabaseAdmin.from('artists').update(update).eq('id', artist.id)
+        if (error && update.mb_artist_id) {
+          // az azonosító már egy másik előadónál szerepel: csak az ellenőrzést jelöljük
+          await supabaseAdmin
+            .from('artists')
+            .update({ origin_checked_at: update.origin_checked_at })
+            .eq('id', artist.id)
+        }
+      }
+      summary.auditedArtists++
+    } catch (err) {
+      // MusicBrainz hiba esetén nem jelöljük ellenőrzöttnek, a következő futás újrapróbálja
+      summary.errors.push(`Előadó-ellenőrzés (${artist.name}): ${errorMessage(err)}`)
+    }
+  }
 }
 
 /**
@@ -447,5 +599,12 @@ async function runSync(summary: SyncSummary) {
     if (hasTime()) await runSpotifyRepair(summary)
   } catch (err) {
     summary.errors.push(`Pótlás: ${errorMessage(err)}`)
+  }
+
+  // 5. Korábban felvett előadók eredetének ellenőrzése (külföldiek kiszedése)
+  try {
+    if (hasTime()) await runArtistAudit(summary)
+  } catch (err) {
+    summary.errors.push(`Előadó-átvizsgálás: ${errorMessage(err)}`)
   }
 }
