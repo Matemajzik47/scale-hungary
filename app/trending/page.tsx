@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import {
+  fetchDivisive,
+  fetchHiddenGems,
+  fetchRecommended,
   fetchFreshReleases,
   fetchFriendFavorites,
   fetchTopRated,
@@ -34,6 +37,9 @@ export default function TrendingPage() {
   const [periodData, setPeriodData] = useState<PeriodData | null>(null)
   const [fresh, setFresh] = useState<FreshRelease[] | null>(null)
   const [friends, setFriends] = useState<FriendFavorites | 'guest' | null>(null)
+  const [recommended, setRecommended] = useState<TrackCardData[] | 'guest' | null>(null)
+  const [divisive, setDivisive] = useState<TrackCardData[] | null>(null)
+  const [gems, setGems] = useState<TrackCardData[] | null>(null)
 
   // Időszak szerinti listák (felkapott + legjobbra értékelt)
   useEffect(() => {
@@ -53,13 +59,25 @@ export default function TrendingPage() {
     fetchFreshReleases(12).then((r) => {
       if (!cancelled) setFresh(r)
     })
+    fetchDivisive(12).then((r) => {
+      if (!cancelled) setDivisive(r ?? [])
+    })
+    fetchHiddenGems(12).then((r) => {
+      if (!cancelled) setGems(r ?? [])
+    })
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) {
-        if (!cancelled) setFriends('guest')
+        if (!cancelled) {
+          setFriends('guest')
+          setRecommended('guest')
+        }
         return
       }
-      const result = await fetchFriendFavorites(data.user.id)
-      if (!cancelled) setFriends(result)
+      const [result, rec] = await Promise.all([fetchFriendFavorites(data.user.id), fetchRecommended(12)])
+      if (!cancelled) {
+        setFriends(result)
+        setRecommended(rec ?? [])
+      }
     })
     return () => {
       cancelled = true
@@ -133,6 +151,34 @@ export default function TrendingPage() {
         )}
       </section>
 
+      {/* Neked javasolt */}
+      <section>
+        <SectionHeader
+          eyebrow="Neked"
+          title="Neked javasolt"
+          hint="Hasonló ízlésű hallgatók kedvencei, amiket még nem értékeltél."
+        />
+        {recommended === null ? (
+          <EmptyBlock>Betöltés…</EmptyBlock>
+        ) : recommended === 'guest' ? (
+          <EmptyBlock>
+            <Link href="/login" className="font-semibold text-[#FF5B37] underline-offset-2 hover:underline">
+              Jelentkezz be
+            </Link>
+            , és ajánlunk neked dalokat az ízlésed alapján.
+          </EmptyBlock>
+        ) : recommended.length === 0 ? (
+          <EmptyBlock>
+            Értékelj még néhány dalt, és hamarosan személyre szabott ajánlásokat kapsz.{' '}
+            <Link href="/discover" className="font-semibold text-[#FF5B37] underline-offset-2 hover:underline">
+              Irány a Felfedezés
+            </Link>
+          </EmptyBlock>
+        ) : (
+          <Scroller items={recommended} />
+        )}
+      </section>
+
       {/* Friss kiadások */}
       <section>
         <SectionHeader eyebrow="Új" title="Friss kiadások" hint="A katalógus legújabb albumai." />
@@ -184,6 +230,38 @@ export default function TrendingPage() {
           <EmptyBlock>Az ismerőseid még nem értékeltek magasra egyetlen dalt sem.</EmptyBlock>
         ) : (
           <Scroller items={friends.items} />
+        )}
+      </section>
+
+      {/* Megosztó */}
+      <section>
+        <SectionHeader
+          eyebrow="Vitatott"
+          title="Megosztó dalok"
+          hint="Van, aki imádja, van, aki nem. Alatta a legalacsonyabb és legmagasabb pontszám."
+        />
+        {divisive === null ? (
+          <EmptyBlock>Betöltés…</EmptyBlock>
+        ) : divisive.length === 0 ? (
+          <EmptyBlock>Még nincs elég eltérő vélemény egy dalról sem.</EmptyBlock>
+        ) : (
+          <Scroller items={divisive} />
+        )}
+      </section>
+
+      {/* Rejtett gyöngyszemek */}
+      <section>
+        <SectionHeader
+          eyebrow="Felfedezetlen"
+          title="Rejtett gyöngyszemek"
+          hint="Nagyon magas átlag, de még kevesen hallották."
+        />
+        {gems === null ? (
+          <EmptyBlock>Betöltés…</EmptyBlock>
+        ) : gems.length === 0 ? (
+          <EmptyBlock>Még nincs ilyen dal. Értékelj te is, hogy legyen!</EmptyBlock>
+        ) : (
+          <Scroller items={gems} />
         )}
       </section>
     </div>
