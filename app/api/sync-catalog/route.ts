@@ -115,6 +115,17 @@ function normalizeDate(value: string | undefined): string | null {
   return null
 }
 
+/** A legfrissebb kiadás kerüljön előre (a hiányos dátumok is összehasonlíthatók). */
+function newestFirst(releases: MbRelease[]): MbRelease[] {
+  return [...releases].sort((a, b) =>
+    (normalizeDate(b.date) ?? '').localeCompare(normalizeDate(a.date) ?? '')
+  )
+}
+
+// Egy futásnak ennyi ideje van a feldolgozásra, utána leáll (a maxDuration előtt),
+// és a maradékot a következő futás intézi
+const TIME_BUDGET_MS = 240_000
+
 function errorMessage(err: unknown): string {
   return err instanceof Error
     ? err.message
@@ -338,13 +349,20 @@ type RepairAlbumRow = {
  */
 async function runSpotifyRepair(summary: SyncSummary) {
   const cutoff = new Date(Date.now() - REPAIR_RETRY_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const recentFrom = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const { data, error } = await supabaseAdmin
     .from('albums')
     .select('id, title, artists(name)')
     .is('spotify_album_id', null)
-    .or(`spotify_checked_at.is.null,spotify_checked_at.lt.${cutoff}`)
+    // A nagyon friss kiadásokat (21 napon belül) naponta újrapróbáljuk, mert a Spotify
+    // néha csak napokkal a megjelenés után indexeli őket; a régebbieket ritkábban.
+    .or(
+      `spotify_checked_at.is.null,spotify_checked_at.lt.${cutoff},and(release_date.gte.${recentFrom},spotify_checked_at.lt.${dayAgo})`
+    )
     .order('spotify_checked_at', { ascending: true, nullsFirst: true })
+    .order('release_date', { ascending: false, nullsFirst: false })
     .limit(REPAIR_BATCH_SIZE)
 
   if (error) throw error
@@ -387,30 +405,46 @@ async function runSpotifyRepair(summary: SyncSummary) {
 }
 
 async function runSync(summary: SyncSummary) {
-  // A két rész egymástól függetlenül fut: ha a MusicBrainz az egyiknél hibát ad,
-  // a másik attól még lefuthat, és a hiba bekerül az összegzésbe.
+  // A részek egymástól függetlenül futnak: ha a MusicBrainz az egyiknél hibát ad,
+  // a többi attól még lefuthat, és a hiba bekerül az összegzésbe.
+  // Fontossági sorrend: 1) a héten megjelentek, 2) az elmúlt másfél hónap,
+  // 3) régebbi archív zenék (visszafelé haladva), 4) Spotify-pótlás.
+  const startedAt = Date.now()
+  const hasTime = () => Date.now() - startedAt < TIME_BUDGET_MS
 
-  // 1. Friss (elmúlt 45 nap) kiadások: albumok, EP-k és kislemezek
+  // 1. Ezen a héten (elmúlt 7 nap) megjelent kiadások: mindig ez fut le először
   try {
-    const recentReleases = await fetchRecentHungarianReleases(45, 200)
+    const thisWeek = newestFirst(await fetchRecentHungarianReleases(7, 100))
+    for (const release of thisWeek) {
+      if (!hasTime()) break
+      await processRelease(release, summary)
+    }
+  } catch (err) {
+    summary.errors.push(`E heti kiadások: ${errorMessage(err)}`)
+  }
+
+  // 2. Az elmúlt 45 nap többi kiadása (a már meglévőket gyorsan átugorja)
+  try {
+    const recentReleases = newestFirst(await fetchRecentHungarianReleases(45, 200))
     for (const release of recentReleases) {
+      if (!hasTime()) break
       await processRelease(release, summary)
     }
   } catch (err) {
     summary.errors.push(`Friss kiadások: ${errorMessage(err)}`)
   }
 
-  // 2. Archív backfill — egy adagnyi régi kiadás a legújabb dátumsávtól
+  // 3. Archív backfill — egy adagnyi régebbi kiadás a legújabb dátumsávtól
   // kezdve (ld. BACKFILL_RANGES), ha még nem végeztünk
   try {
-    await runBackfillBatch(summary)
+    if (hasTime()) await runBackfillBatch(summary)
   } catch (err) {
     summary.errors.push(`Backfill: ${errorMessage(err)}`)
   }
 
-  // 3. Spotify nélküli albumok újrapárosítása
+  // 4. Spotify nélküli albumok újrapárosítása (a legfrissebbek előbb)
   try {
-    await runSpotifyRepair(summary)
+    if (hasTime()) await runSpotifyRepair(summary)
   } catch (err) {
     summary.errors.push(`Pótlás: ${errorMessage(err)}`)
   }
