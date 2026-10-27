@@ -14,15 +14,23 @@ export function IdCardPreview({ covers }: { covers: string[] }) {
   const tiltRef = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
 
+  const frame = useRef<number | null>(null)
+
   function onMove(e: React.PointerEvent<HTMLDivElement>) {
     if (e.pointerType !== 'mouse') return
     const el = tiltRef.current
-    if (!el) return
+    if (!el || frame.current !== null) return
     const rect = e.currentTarget.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / rect.width - 0.5
-    const y = (e.clientY - rect.top) / rect.height - 0.5
-    el.style.setProperty('--ry', `${-9 + x * 10}deg`)
-    el.style.setProperty('--rx', `${3 - y * 8}deg`)
+    const cx = e.clientX
+    const cy = e.clientY
+    // Legfeljebb képkockánként egyszer frissítünk (kíméli a gépet)
+    frame.current = requestAnimationFrame(() => {
+      frame.current = null
+      const x = (cx - rect.left) / rect.width - 0.5
+      const y = (cy - rect.top) / rect.height - 0.5
+      el.style.setProperty('--ry', `${-9 + x * 10}deg`)
+      el.style.setProperty('--rx', `${3 - y * 8}deg`)
+    })
   }
 
   function onLeave() {
@@ -48,29 +56,68 @@ export function IdCardPreview({ covers }: { covers: string[] }) {
         aria-hidden="true"
       >
         <div className="relative aspect-square w-[86%] [transform-style:preserve-3d] [transform:rotateX(72deg)]">
-          {/* Tányér alja: vastagság + narancs fény */}
-          <div className="disc-glow absolute inset-0 rounded-full bg-[#0B0B0D] [transform:translateZ(-16px)]" />
-          {/* Az egész lemez együtt forog a közepe körül (címkével együtt) */}
+          {/* Tányér alja: vastagság + narancs fény (a fény csak áttetszőségben pulzál, ez olcsó) */}
+          <div className="absolute inset-0 rounded-full bg-[#0B0B0D] shadow-[0_0_28px_rgba(255,91,55,0.4)] [transform:translateZ(-16px)]" />
+          <div className="disc-glow absolute inset-0 rounded-full shadow-[0_0_46px_rgba(255,91,55,0.8)] [transform:translateZ(-16px)]" />
+          {/* Fényes fekete korong (nem mozog) */}
+          <div className="absolute inset-0 rounded-full bg-[#0a0a0b] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]" />
+          {/* Finom barázdák: a címke körüli üres gyűrűtől a peremig */}
           <div
-            className="vinyl-spin absolute inset-0 flex items-center justify-center rounded-full border-2 border-[#FF5B37]"
+            className="absolute inset-[1.5%] rounded-full"
             style={{
-              background: 'repeating-radial-gradient(circle at center, #0c0c0e 0 2px, #1a1b1f 2px 3px)',
+              background: 'repeating-radial-gradient(circle at center, #0b0b0d 0 1.2px, #17181c 1.2px 2.2px)',
+              WebkitMaskImage: 'radial-gradient(circle closest-side, transparent 0 37%, #000 38% 98%, transparent 100%)',
+              maskImage: 'radial-gradient(circle closest-side, transparent 0 37%, #000 38% 98%, transparent 100%)',
             }}
-          >
-            {/* Címke */}
-            <div className="relative flex aspect-square w-[34%] items-center justify-center rounded-full bg-gradient-to-br from-[#FF5B37] to-[#FF8F68] shadow-[inset_0_0_0_3px_rgba(0,0,0,0.25)]">
-              <ScaleLogo className="h-[34%] w-[34%] !ring-0" />
-              <span className="absolute left-[16%] top-1/2 h-[6%] w-[6%] -translate-y-1/2 rounded-full bg-white/80" />
-            </div>
-          </div>
-          {/* Fix fényív: nem forog a lemezzel, így a fény a helyén marad */}
+          />
+          {/* Számhatárok: sima, fényes gyűrűk a barázdák között, ahogy a valódi lemezen */}
+          <div
+            className="absolute inset-[1.5%] rounded-full"
+            style={{
+              background:
+                'radial-gradient(circle closest-side, transparent 0 51%, rgba(8,8,10,0.92) 51.5% 53.5%, transparent 54% 62%, rgba(8,8,10,0.92) 62.5% 64.2%, transparent 64.7% 73%, rgba(8,8,10,0.92) 73.5% 75.2%, transparent 75.7% 84%, rgba(8,8,10,0.92) 84.5% 86.2%, transparent 86.7%)',
+            }}
+          />
+          {/* Fix fényívek: két átellenes, puha visszatükröződés */}
           <div
             className="absolute inset-0 rounded-full"
             style={{
               background:
-                'conic-gradient(from 30deg, transparent 0 18%, rgba(255,255,255,0.16) 24%, transparent 32% 68%, rgba(255,255,255,0.16) 74%, transparent 82%)',
+                'conic-gradient(from 20deg, transparent 0 10%, rgba(255,255,255,0.3) 17%, rgba(255,255,255,0.07) 22%, transparent 30% 60%, rgba(255,255,255,0.3) 67%, rgba(255,255,255,0.05) 72%, transparent 80%)',
+              WebkitMaskImage: 'radial-gradient(circle closest-side, transparent 0 35%, #000 40% 100%)',
+              maskImage: 'radial-gradient(circle closest-side, transparent 0 35%, #000 40% 100%)',
             }}
           />
+          {/* Forgó címke: narancs, kiemelkedő pereme van, rajta kör alakú felirat; csak ez mozog */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="vinyl-spin relative aspect-square w-[33%] rounded-full shadow-[0_0_0_2px_rgba(0,0,0,0.55),0_0_10px_rgba(0,0,0,0.6)] [will-change:transform]">
+              <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full">
+                <defs>
+                  <radialGradient id="lbl" cx="40%" cy="35%" r="75%">
+                    <stop offset="0" stopColor="#FF8F68" />
+                    <stop offset="1" stopColor="#FF5B37" />
+                  </radialGradient>
+                  <path id="lblRing" d="M50,50 m-37,0 a37,37 0 1,1 74,0 a37,37 0 1,1 -74,0" />
+                </defs>
+                <circle cx="50" cy="50" r="50" fill="url(#lbl)" />
+                <circle cx="50" cy="50" r="47" fill="none" stroke="rgba(0,0,0,0.28)" strokeWidth="1.4" />
+                <circle cx="50" cy="50" r="44.5" fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth="0.7" />
+                <text fontSize="6.4" fontWeight="800" letterSpacing="1.5" fill="#1a0f0b" fontFamily="var(--font-display), sans-serif">
+                  <textPath href="#lblRing" startOffset="0">
+                    SCALE · MUSIC TASTE ID · MADE IN HUNGARY ·
+                  </textPath>
+                </text>
+                <g fill="#1a0f0b" fontFamily="var(--font-geist-mono), monospace" fontSize="4.4" fontWeight="700" textAnchor="middle">
+                  <text x="50" y="76">STEREO · 33⅓</text>
+                  <text x="50" y="83">SCALE-001 · A</text>
+                </g>
+                <circle cx="50" cy="50" r="15" fill="rgba(0,0,0,0.18)" />
+              </svg>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <ScaleLogo className="h-[30%] w-[30%] !ring-0" />
+              </div>
+            </div>
+          </div>
         </div>
         {/* A kártya vetett fénye a lemezen */}
         <div className="card-shadow absolute inset-x-[26%] top-[34px] h-[30px] rounded-[50%] bg-[#FF5B37]/40 blur-xl" />
