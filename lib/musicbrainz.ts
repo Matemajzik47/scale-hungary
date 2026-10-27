@@ -58,13 +58,15 @@ export interface MbRelease {
   title: string
   date?: string
   artistName: string
+  // A MusicBrainz előadó-azonosítója (az eredet ellenőrzéséhez)
+  artistId?: string
 }
 
 type MbRawRelease = {
   id: string
   title: string
   date?: string
-  'artist-credit'?: { name: string }[]
+  'artist-credit'?: { name: string; artist?: { id?: string } }[]
 }
 
 function mapRawRelease(r: MbRawRelease): MbRelease {
@@ -73,7 +75,48 @@ function mapRawRelease(r: MbRawRelease): MbRelease {
     title: r.title,
     date: r.date,
     artistName: r['artist-credit']?.[0]?.name ?? 'Ismeretlen előadó',
+    artistId: r['artist-credit']?.[0]?.artist?.id,
   }
+}
+
+/**
+ * Az előadó eredete. A "country:HU" keresés a KIADÁS országára szűr, ezért külföldi
+ * előadók magyarországi kiadásai is bekerültek. Ezért az előadót is megnézzük.
+ * 'hu' = magyar, 'foreign' = biztosan külföldi, 'unknown' = nincs elég adat (megtartjuk).
+ */
+export type ArtistOrigin = 'hu' | 'foreign' | 'unknown'
+
+export async function fetchArtistOrigin(mbArtistId: string): Promise<ArtistOrigin> {
+  const data = (await mbFetchJson(`${MB_BASE_URL}/artist/${mbArtistId}?fmt=json`)) as {
+    country?: string | null
+    area?: { 'iso-3166-1-codes'?: string[] } | null
+  }
+
+  const country = data.country ?? null
+  const areaCodes = data.area?.['iso-3166-1-codes'] ?? []
+  // XW (világszerte) és XE (Európa) nem jelent tényleges országot
+  const real = (c: string) => c !== 'XW' && c !== 'XE'
+
+  if (country === 'HU' || areaCodes.includes('HU')) return 'hu'
+  if (country && real(country)) return 'foreign'
+  if (areaCodes.length > 0 && areaCodes.every(real)) return 'foreign'
+  return 'unknown'
+}
+
+/** Egy meglévő előadó MusicBrainz-azonosítójának megkeresése egy kiadása alapján. */
+export async function findArtistIdByRelease(artistName: string, albumTitle: string): Promise<string | null> {
+  const esc = (t: string) => t.replace(/["\\]/g, ' ')
+  const query = `release:"${esc(albumTitle)}" AND artist:"${esc(artistName)}"`
+  const data = (await mbFetchJson(
+    `${MB_BASE_URL}/release/?query=${encodeURIComponent(query)}&fmt=json&limit=5`
+  )) as { releases?: MbRawRelease[] }
+
+  const wanted = artistName.trim().toLowerCase()
+  for (const r of data.releases ?? []) {
+    const credit = r['artist-credit']?.[0]
+    if (credit?.artist?.id && credit.name.trim().toLowerCase() === wanted) return credit.artist.id
+  }
+  return null
 }
 
 /**
