@@ -48,7 +48,25 @@ const MB_MAX_RESULTS = 500
 function buildBackfillRanges(): { from: string; to: string }[] {
   const out: { from: string; to: string }[] = []
   const thisYear = new Date().getFullYear()
-  for (let y = thisYear; y >= 2010; y--) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const lastDay = (y: number, m: number) => new Date(y, m, 0).getDate()
+
+  // Az elmúlt években (a kislemezekkel együtt sok a kiadás) havi sávok, újabbtól régebbi felé
+  for (let y = thisYear; y >= thisYear - 2; y--) {
+    for (let m = 12; m >= 1; m--) {
+      out.push({ from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${lastDay(y, m)}` })
+    }
+  }
+  // 2016-ig negyedéves sávok
+  for (let y = thisYear - 3; y >= 2016; y--) {
+    for (let q = 4; q >= 1; q--) {
+      const m1 = (q - 1) * 3 + 1
+      const m2 = q * 3
+      out.push({ from: `${y}-${pad(m1)}-01`, to: `${y}-${pad(m2)}-${lastDay(y, m2)}` })
+    }
+  }
+  // 2010-ig féléves, 1980-ig éves, azon túl évtizedes sávok
+  for (let y = 2015; y >= 2010; y--) {
     out.push({ from: `${y}-07-01`, to: `${y}-12-31` })
     out.push({ from: `${y}-01-01`, to: `${y}-06-30` })
   }
@@ -372,9 +390,9 @@ async function runSync(summary: SyncSummary) {
   // A két rész egymástól függetlenül fut: ha a MusicBrainz az egyiknél hibát ad,
   // a másik attól még lefuthat, és a hiba bekerül az összegzésbe.
 
-  // 1. Friss (elmúlt 180 nap) kiadások
+  // 1. Friss (elmúlt 45 nap) kiadások: albumok, EP-k és kislemezek
   try {
-    const recentReleases = await fetchRecentHungarianReleases(180, 25)
+    const recentReleases = await fetchRecentHungarianReleases(45, 200)
     for (const release of recentReleases) {
       await processRelease(release, summary)
     }
