@@ -10,6 +10,7 @@ import { QrCodeShareModal } from '@/components/profile/QrCodeShareModal'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
 import { ProfileSocialPanel } from '@/components/social/ProfileSocialPanel'
 import { InstallButton } from '@/components/pwa/InstallButton'
+import { DeleteAccountButton } from '@/components/profile/DeleteAccountButton'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -106,6 +107,8 @@ export default function ProfilePage() {
         <LogOut className="h-3.5 w-3.5" />
         Kijelentkezés
       </button>
+
+      <DeleteAccountButton username={data.profile.username} />
 
       <QrCodeShareModal
         isOpen={isShareOpen}
