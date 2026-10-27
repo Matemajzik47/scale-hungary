@@ -18,6 +18,7 @@ type TrendingRow = {
   avg_score: number | string | null
   total_ratings: number | string
   recent_ratings?: number | string
+  note?: string | null
 }
 
 function mapRow(r: TrendingRow, countFromRecent: boolean): TrackCardData {
@@ -28,6 +29,7 @@ function mapRow(r: TrendingRow, countFromRecent: boolean): TrackCardData {
     coverUrl: r.cover_url,
     avg: r.avg_score === null ? null : Number(r.avg_score),
     count: Number(countFromRecent && r.recent_ratings !== undefined ? r.recent_ratings : r.total_ratings),
+    note: r.note ?? undefined,
   }
 }
 
@@ -45,6 +47,27 @@ export async function fetchTopRated(days: number, minCount = 2, limit = 10): Pro
     p_min: minCount,
     p_limit: limit,
   })
+  if (error) return null
+  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
+}
+
+/** Megosztó: nagy a szórás az értékelések között. */
+export async function fetchDivisive(limit = 12): Promise<TrackCardData[] | null> {
+  const { data, error } = await supabase.rpc('divisive_tracks', { p_min: 3, p_limit: limit })
+  if (error) return null
+  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
+}
+
+/** Rejtett gyöngyszemek: magas átlag, kevés értékelés. */
+export async function fetchHiddenGems(limit = 12): Promise<TrackCardData[] | null> {
+  const { data, error } = await supabase.rpc('hidden_gems', { p_limit: limit })
+  if (error) return null
+  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
+}
+
+/** Neked javasolt (csak bejelentkezve értelmes): hasonló ízlésű felhasználók kedvencei. */
+export async function fetchRecommended(limit = 12): Promise<TrackCardData[] | null> {
+  const { data, error } = await supabase.rpc('recommended_tracks', { p_limit: limit })
   if (error) return null
   return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
 }
