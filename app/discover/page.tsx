@@ -31,37 +31,28 @@ export default function DiscoverPage() {
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
-  // Fisher–Yates shuffle — a régi katalógusból érkező fallback dalok
-  // teljesen véletlenszerű sorrendben kerüljenek a deckbe
-  function shuffle<T>(arr: T[]): T[] {
-    const copy = [...arr]
-    for (let i = copy.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1))
-      ;[copy[i], copy[j]] = [copy[j], copy[i]]
-    }
-    return copy
-  }
-
-  /**
-   * Albumok (adott id-kra szűkítve, vagy mind) lekérése dalokkal, előadóval
-   * és a rating-ekkel együtt — DiscoverTrack listává alakítva.
-   */
-  async function fetchTracksForAlbums(
-    albumIds: string[] | null,
+  // Egy "oldal" album a legfrissebbtől lefelé, a dalaikkal, előadóval és értékelésekkel.
+  // Csak a megjelent (nem jövőbeli), dátummal és legalább egy dallal rendelkező albumok
+  // számítanak, a dátum nélküliek nem kerülhetnek előre.
+  async function fetchAlbumPage(
+    offset: number,
+    limit: number,
     currentUserId: string | null
-  ): Promise<DiscoverTrack[]> {
-    let query = supabase
+  ): Promise<{ tracks: DiscoverTrack[]; albumCount: number }> {
+    const today = new Date().toISOString().slice(0, 10)
+
+    const { data: albumsData, error } = await supabase
       .from('albums')
-      .select('id, title, cover_url, spotify_album_id, artists(id, name), tracks(id, title, spotify_track_id)')
+      .select(
+        'id, title, cover_url, spotify_album_id, artists(id, name), tracks!inner(id, title, spotify_track_id)'
+      )
+      .not('release_date', 'is', null)
+      .lte('release_date', today)
+      .order('release_date', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + limit - 1)
 
-    if (albumIds) {
-      query = query.in('id', albumIds.length > 0 ? albumIds : [''])
-    } else {
-      query = query.order('release_date', { ascending: false }).limit(15)
-    }
-
-    const { data: albumsData, error } = await query
-    if (error || !albumsData) return []
+    if (error || !albumsData) return { tracks: [], albumCount: 0 }
 
     const flatTracks: {
       id: string
@@ -80,45 +71,34 @@ export default function DiscoverPage() {
         spotify_album_id: a.spotify_album_id,
       }
       for (const t of a.tracks ?? []) {
-        flatTracks.push({
-          id: t.id,
-          title: t.title,
-          spotify_track_id: t.spotify_track_id,
-          album,
-          artist,
-        })
+        flatTracks.push({ id: t.id, title: t.title, spotify_track_id: t.spotify_track_id, album, artist })
       }
     }
 
-    const trackIds = flatTracks.map((t) => t.id)
-
-    const { data: allRatings } = await supabase
-      .from('ratings')
-      .select('track_id, score, user_id')
-      .in('track_id', trackIds.length > 0 ? trackIds : [''])
-
+    // Az értékeléseket kisebb csomagokban kérjük, hogy a lekérdezés URL-je ne legyen túl hosszú
     const ratingsByTrack = new Map<string, number[]>()
     const myRatings: Record<string, number> = {}
-
-    for (const r of allRatings ?? []) {
-      const list = ratingsByTrack.get(r.track_id) ?? []
-      list.push(Number(r.score))
-      ratingsByTrack.set(r.track_id, list)
-      if (currentUserId && r.user_id === currentUserId) {
-        myRatings[r.track_id] = Number(r.score)
+    for (let i = 0; i < flatTracks.length; i += 100) {
+      const ids = flatTracks.slice(i, i + 100).map((t) => t.id)
+      const { data: chunk } = await supabase
+        .from('ratings')
+        .select('track_id, score, user_id')
+        .in('track_id', ids)
+      for (const r of chunk ?? []) {
+        const list = ratingsByTrack.get(r.track_id) ?? []
+        list.push(Number(r.score))
+        ratingsByTrack.set(r.track_id, list)
+        if (currentUserId && r.user_id === currentUserId) myRatings[r.track_id] = Number(r.score)
       }
     }
 
-    return flatTracks.map((t) => {
+    const tracks = flatTracks.map((t) => {
       const scores = ratingsByTrack.get(t.id) ?? []
       const avg = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null
-      return {
-        ...t,
-        communityAverage: avg,
-        totalRatings: scores.length,
-        userRating: myRatings[t.id] ?? null,
-      }
+      return { ...t, communityAverage: avg, totalRatings: scores.length, userRating: myRatings[t.id] ?? null }
     })
+
+    return { tracks, albumCount: albumsData.length }
   }
 
   useEffect(() => {
@@ -129,32 +109,21 @@ export default function DiscoverPage() {
       const currentUserId = user?.id ?? null
       setUserId(currentUserId)
 
-      // 1. Friss (legutóbbi 15 album) kiadások — elsődleges forrás
-      const recentTracks = await fetchTracksForAlbums(null, currentUserId)
-      const unratedRecent = recentTracks.filter((t) => t.userRating === null)
-
-      let finalDeck = unratedRecent
+      // Mindig a legfrissebb kiadásokkal kezdünk. Ha az első albumokat már mind
+      // értékelted, lapozunk a régebbiekre, amíg nincs elég még nem értékelt dal.
+      const PAGE_SIZE = 20
+      const TARGET = 25
+      const MAX_PAGES = 15
+      const finalDeck: DiscoverTrack[] = []
       const myRatings: Record<string, number> = {}
-      for (const t of recentTracks) {
-        if (t.userRating !== null) myRatings[t.id] = t.userRating
-      }
 
-      // 2. Fallback: ha a friss kiadásokból kifogyott a még nem ratelt anyag,
-      // hozzunk be véletlenszerűen régi, még nem ratelt dalokat is a teljes
-      // katalógusból, hogy sose fogyjon ki a deck
-      if (unratedRecent.length === 0) {
-        const { data: allAlbumIdsData } = await supabase.from('albums').select('id')
-        const allAlbumIds = (allAlbumIdsData ?? []).map((a) => a.id)
-
-        if (allAlbumIds.length > 0) {
-          const allTracks = await fetchTracksForAlbums(allAlbumIds, currentUserId)
-          const unratedAll = allTracks.filter((t) => t.userRating === null)
-          finalDeck = shuffle(unratedAll)
-
-          for (const t of allTracks) {
-            if (t.userRating !== null) myRatings[t.id] = t.userRating
-          }
+      for (let page = 0; page < MAX_PAGES && finalDeck.length < TARGET; page++) {
+        const { tracks, albumCount } = await fetchAlbumPage(page * PAGE_SIZE, PAGE_SIZE, currentUserId)
+        for (const t of tracks) {
+          if (t.userRating !== null) myRatings[t.id] = t.userRating
+          else finalDeck.push(t)
         }
+        if (albumCount < PAGE_SIZE) break
       }
 
       setDeck(finalDeck)
