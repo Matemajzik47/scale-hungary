@@ -71,6 +71,8 @@ export async function fetchFreshReleases(limit = 12): Promise<FreshRelease[]> {
     .from('albums')
     .select('id, title, cover_url, artists(name), tracks(id)')
     .not('cover_url', 'is', null)
+    .not('release_date', 'is', null)
+    .lte('release_date', new Date().toISOString().slice(0, 10))
     .order('release_date', { ascending: false })
     .limit(limit)
 
