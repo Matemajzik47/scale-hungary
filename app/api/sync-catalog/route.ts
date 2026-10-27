@@ -10,6 +10,8 @@ import {
 } from '@/lib/musicbrainz'
 import {
   SpotifyRateLimitError,
+  getSpotifyBlockedUntil,
+  setSpotifyBlockedUntil,
   searchSpotifyAlbum,
   getArtistReleases,
   getAlbumTracks,
@@ -743,6 +745,29 @@ async function runSpotifyRepair(summary: SyncSummary) {
   }
 }
 
+/**
+ * A Spotify hosszú (akár fél napos) tiltást is adhat. A tiltás végét a sync_state
+ * 'spotify_block' sorának last_run_at mezőjében tároljuk, hogy minden futás tudjon róla,
+ * és tiltás alatt egyetlen Spotify-kérés se menjen ki (az csak hosszabbítaná).
+ */
+async function loadSpotifyBlock() {
+  const { data } = await supabaseAdmin
+    .from('sync_state')
+    .select('last_run_at')
+    .eq('id', 'spotify_block')
+    .maybeSingle()
+  const until = data?.last_run_at ? new Date(data.last_run_at).getTime() : 0
+  if (until > Date.now()) setSpotifyBlockedUntil(until)
+}
+
+async function saveSpotifyBlock() {
+  const until = getSpotifyBlockedUntil()
+  if (until <= Date.now()) return
+  await supabaseAdmin
+    .from('sync_state')
+    .upsert({ id: 'spotify_block', last_run_at: new Date(until).toISOString() })
+}
+
 async function runSync(summary: SyncSummary) {
   // A részek egymástól függetlenül futnak: ha a MusicBrainz az egyiknél hibát ad,
   // a többi attól még lefuthat, és a hiba bekerül az összegzésbe.
@@ -750,6 +775,17 @@ async function runSync(summary: SyncSummary) {
   // 3) régebbi archív zenék (visszafelé haladva), 4) Spotify-pótlás.
   const startedAt = Date.now()
   const hasTime = () => Date.now() - startedAt < TIME_BUDGET_MS
+
+  try {
+    await loadSpotifyBlock()
+  } catch {
+    // ha nem olvasható, a Spotify-kérés 429-nél úgyis újra megállítja a futást
+  }
+  const spotifyPaused = () => getSpotifyBlockedUntil() > Date.now()
+  if (spotifyPaused()) {
+    const hours = ((getSpotifyBlockedUntil() - Date.now()) / 3600000).toFixed(1)
+    summary.errors.push(`Spotify szünet: még ~${hours} óráig nem kérdezzük (a kiadások Spotify nélkül is bekerülnek)`)
+  }
 
   // 1. Ezen a héten (elmúlt 7 nap) megjelent kiadások: mindig ez fut le először
   try {
@@ -772,7 +808,7 @@ async function runSync(summary: SyncSummary) {
 
   // 1b. Előadó-figyelés: a katalógus előadóinak friss kiadásai közvetlenül a Spotify-tól
   try {
-    await runArtistWatch(summary, hasTime)
+    if (!spotifyPaused()) await runArtistWatch(summary, hasTime)
   } catch (err) {
     summary.errors.push(`Előadó-figyelés: ${errorMessage(err)}`)
   }
@@ -798,9 +834,15 @@ async function runSync(summary: SyncSummary) {
 
   // 4. Spotify nélküli albumok újrapárosítása (a legfrissebbek előbb)
   try {
-    if (hasTime()) await runSpotifyRepair(summary)
+    if (hasTime() && !spotifyPaused()) await runSpotifyRepair(summary)
   } catch (err) {
     summary.errors.push(`Pótlás: ${errorMessage(err)}`)
+  }
+
+  try {
+    await saveSpotifyBlock()
+  } catch {
+    // nem kritikus: legrosszabb esetben a következő futás újra kap egy 429-et
   }
 
 }
