@@ -6,6 +6,7 @@ import { ScaleLogo } from '@/components/ScaleLogo'
 import type { ReactNode } from 'react'
 import { CardQr } from '@/components/profile/CardQr'
 import { CardBgImage, DEFAULT_BG_POS, type CardBgPos } from '@/components/profile/CardBgImage'
+import { idNumberFor, waveFor } from '@/lib/taste-hash'
 
 interface MusicIdCardProps {
   username: string
@@ -26,26 +27,6 @@ interface MusicIdCardProps {
   autoSheen?: boolean
 }
 
-// A felhasználónévből képzett, mindig ugyanolyan "ízlés-hullámforma" és ID szám
-function hashOf(text: string): number {
-  let h = 2166136261
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h >>> 0
-}
-
-function waveFor(username: string): number[] {
-  let seed = hashOf(username) || 1
-  const out: number[] = []
-  for (let i = 0; i < 24; i++) {
-    seed = (seed * 1103515245 + 12345) & 0x7fffffff
-    out.push(6 + (seed % 100) * 0.26)
-  }
-  return out
-}
-
 export function MusicIdCard({
   username,
   tierLabel,
@@ -62,7 +43,7 @@ export function MusicIdCard({
 }: MusicIdCardProps) {
   const tiltRef = useRef<HTMLDivElement>(null)
   const wave = waveFor(username)
-  const idNumber = String(hashOf(username) % 1000000).padStart(6, '0')
+  const idNumber = idNumberFor(username)
 
   // Egérrel/érintéssel enyhén megdől, mint egy valódi kártya
   function onMove(e: React.PointerEvent<HTMLDivElement>) {

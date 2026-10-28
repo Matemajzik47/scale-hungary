@@ -5,6 +5,7 @@ import { Flame, Calendar, Star, Disc3 } from 'lucide-react'
 import { getLevelInfo } from '@/lib/levels'
 import { ProgressCard } from '@/components/profile/ProgressCard'
 import { LevelsModal } from '@/components/profile/LevelsModal'
+import { ShareStoryButton } from '@/components/profile/ShareStoryButton'
 import { Reveal } from '@/components/landing/Reveal'
 import { CardBackgroundButton } from '@/components/profile/CardBackgroundButton'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
@@ -80,6 +81,21 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
           currentUrl={profile.card_bg_url ?? null}
           currentPos={posFromProfile(profile)}
           onChange={onCardBgChange}
+        />
+      )}
+
+      {isOwn && (
+        <ShareStoryButton
+          username={profile.username}
+          version={[
+            profile.card_bg_url ?? '',
+            posFromProfile(profile).x,
+            posFromProfile(profile).y,
+            posFromProfile(profile).zoom,
+            stats.total_ratings ?? 0,
+            stats.current_streak ?? 0,
+            level.level,
+          ].join('-')}
         />
       )}
 

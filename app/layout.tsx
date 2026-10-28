@@ -7,6 +7,7 @@ import { PwaRegister } from "@/components/pwa/PwaRegister";
 import { PlayerProvider } from "@/components/player/PlayerProvider";
 import { PushPrompt } from "@/components/pwa/PushPrompt";
 import { ProgressToast } from "@/components/progress/ProgressToast";
+import { SITE_URL } from "@/lib/site";
 
 // Törzsszöveg: modern, letisztult, jól olvasható (ő/ű miatt latin-ext)
 const jakarta = Manrope({
@@ -26,8 +27,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "Scale",
   description: "Magyar zenei rating platform",
+  openGraph: { siteName: "Scale", locale: "hu_HU", type: "website" },
+  twitter: { card: "summary_large_image" },
   applicationName: "Scale",
   appleWebApp: { capable: true, title: "Scale", statusBarStyle: "black-translucent" },
   icons: { apple: "/icons/apple-touch-icon.png" },

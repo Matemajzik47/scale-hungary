@@ -317,7 +317,7 @@ export default async function Home() {
         <Reveal>
         <section className="mb-10 grid items-center justify-items-start gap-5 rounded-[32px] bg-[#111214] px-7 py-12 text-white md:grid-cols-[1.3fr_auto] md:p-16">
           <h2 className="font-[family-name:var(--font-display)] text-[clamp(32px,5.5vw,56px)] font-extrabold leading-none tracking-[-0.02em] [text-wrap:balance]">
-            Mutasd meg, mit hallgatsz.
+            Mutasd meg, mit hallgatsz!
           </h2>
           <Link
             href="/register"
