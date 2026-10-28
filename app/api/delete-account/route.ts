@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       ['ratings', supabaseAdmin.from('ratings').delete().eq('user_id', uid)],
       ['follows (követő)', supabaseAdmin.from('follows').delete().eq('follower_id', uid)],
       ['follows (követett)', supabaseAdmin.from('follows').delete().eq('following_id', uid)],
+      ['push_subscriptions', supabaseAdmin.from('push_subscriptions').delete().eq('user_id', uid)],
       ['user_stats', supabaseAdmin.from('user_stats').delete().eq('user_id', uid)],
       ['profiles', supabaseAdmin.from('profiles').delete().eq('id', uid)],
     ]

@@ -10,6 +10,7 @@ import { QrCodeShareModal } from '@/components/profile/QrCodeShareModal'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
 import { ProfileSocialPanel } from '@/components/social/ProfileSocialPanel'
 import { InstallButton } from '@/components/pwa/InstallButton'
+import { PushToggle } from '@/components/pwa/PushToggle'
 import { DeleteAccountButton } from '@/components/profile/DeleteAccountButton'
 
 export default function ProfilePage() {
@@ -98,6 +99,8 @@ export default function ProfilePage() {
       </div>
 
       <InstallButton />
+
+      <PushToggle />
 
       <button
         type="button"

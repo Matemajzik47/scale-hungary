@@ -5,6 +5,7 @@ import NavBar from "@/components/NavBar";
 import BottomNavBar from "@/components/BottomNavBar";
 import { PwaRegister } from "@/components/pwa/PwaRegister";
 import { PlayerProvider } from "@/components/player/PlayerProvider";
+import { PushPrompt } from "@/components/pwa/PushPrompt";
 
 // Törzsszöveg: modern, letisztult, jól olvasható (ő/ű miatt latin-ext)
 const jakarta = Manrope({
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <PlayerProvider>{children}</PlayerProvider>
         <BottomNavBar />
         <PwaRegister />
+        <PushPrompt />
       </body>
     </html>
   );
