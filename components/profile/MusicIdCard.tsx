@@ -115,11 +115,11 @@ export function MusicIdCard({
         )}
 
         <div className="relative z-10 flex min-h-[196px] flex-col justify-between gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ScaleLogo className="h-7 w-7" />
-              <span className="font-mono text-[10px] font-extrabold uppercase tracking-[0.18em] text-neutral-200">
-                Scale Music Taste ID
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <ScaleLogo className="h-7 w-7 shrink-0" />
+              <span className="whitespace-nowrap font-mono text-[10px] font-extrabold uppercase tracking-[0.18em] text-neutral-200">
+                <span className="max-[420px]:hidden">Scale Music </span>Taste ID
               </span>
             </div>
             {onTierClick ? (
@@ -127,14 +127,14 @@ export function MusicIdCard({
                 type="button"
                 onClick={onTierClick}
                 aria-label="Szintek megnyitása"
-                className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm transition-colors hover:bg-white/20 active:scale-95"
+                className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm transition-colors hover:bg-white/20 active:scale-95"
               >
                 <ShieldCheck className="h-3 w-3 text-[#FF8F68]" />
                 {tierLabel}
                 <ChevronRight className="h-3 w-3 text-neutral-300" />
               </button>
             ) : (
-              <span className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm">
+              <span className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm">
                 <ShieldCheck className="h-3 w-3 text-[#FF8F68]" />
                 {tierLabel}
               </span>
