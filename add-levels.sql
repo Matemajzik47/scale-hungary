@@ -30,6 +30,8 @@ create policy "Sajat kredit naplo olvashato" on credit_ledger
     +  5  a dal első 10 értékelője között voltál (kis előadó / korai felfedezés), csak a teljes XP-s értékelésekre
     + 10  napi első értékelés bónusz
     + 2/nap  széria-bónusz (legfeljebb +20)
+    Ha valaki egymás után 10-nél többször ugyanazt a pontszámot adja, a további ugyanolyan értékelések
+    nem adnak XP-t (ez a „csak gyorsan lenyomkodom" ellen véd).
     + 100 / 500 / 2000  a 7. / 30. / 100. egymást követő napon (egyszeri)
   A kredit egyelőre ugyanennyi (credits_earned = xp); később külön hangolható.
 */
@@ -47,23 +49,31 @@ language sql
 stable
 as $$
   with mine as (
-    select r.track_id, r.created_at,
+    select r.track_id, r.created_at, r.score,
            (r.created_at at time zone 'Europe/Budapest')::date as d
     from ratings r
     where r.user_id = p_user
+  ),
+  mine_runs as (
+    select m.*,
+           row_number() over (order by m.created_at)
+             - row_number() over (partition by m.score order by m.created_at) as run_grp
+    from mine m
   ),
   ranked as (
     select m.*,
            (select count(*) from ratings x
              where x.track_id = m.track_id and x.created_at <= m.created_at) as rank_on_track,
            row_number() over (partition by m.d order by m.created_at) as n_in_day,
+           row_number() over (partition by m.score, m.run_grp order by m.created_at) as same_score_run,
            a.release_date
-    from mine m
+    from mine_runs m
     left join tracks t on t.id = m.track_id
     left join albums a on a.id = t.album_id
   ),
   per_rating as (
     select case
+             when same_score_run > 10 then 0
              when n_in_day <= 10 then
                10
                + case when release_date is not null and release_date <= d and release_date >= d - 14 then 5 else 0 end

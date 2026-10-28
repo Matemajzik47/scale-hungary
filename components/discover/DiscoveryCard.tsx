@@ -7,7 +7,7 @@ import type { DiscoverTrack } from '@/types/discover'
 
 interface DiscoveryCardProps {
   track: DiscoverTrack
-  rating: number
+  rating: number | null
   onRatingChange: (val: number) => void
   onSwipe: (direction: 'left' | 'right') => void
 }

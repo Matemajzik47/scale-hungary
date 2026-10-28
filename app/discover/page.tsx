@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -9,133 +9,108 @@ import { DiscoveryCard } from '@/components/discover/DiscoveryCard'
 import { CommunityBadge } from '@/components/discover/CommunityBadge'
 import { updateUserStats } from '@/lib/userStats'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
+import {
+  DECK_BATCH,
+  addSkip,
+  clearSkips,
+  deckSeed,
+  fetchDeckBatch,
+  getSkippedIds,
+  removeSkip,
+  spaceOut,
+} from '@/lib/discover-deck'
 import type { DiscoverTrack } from '@/types/discover'
 
-type AlbumWithTracksRow = {
-  id: string
-  title: string
-  cover_url: string | null
-  spotify_album_id: string | null
-  artists: { id: string; name: string } | null
-  tracks: { id: string; title: string; spotify_track_id: string | null }[] | null
-}
+// Ennyi dal alatt kérjük a következő adagot a szervertől, hogy sose fogyjon ki a sor
+const REFILL_AT = 6
 
 export default function DiscoverPage() {
-  // A "deck" egy sor: az első elem a mindenkori aktuális kártya.
-  // Jobbra húzás (rate-elés) → a dal véglegesen kikerül a sorból.
-  // Balra húzás (skip) → a dal a sor végére kerül, csak a kör végén jön elő újra.
+  // A sor első eleme a mindenkori aktuális kártya. A szerver adagonként adja a dalokat
+  // (friss, közelmúlt, alig értékelt régebbi, meglepetés), és ha fogy a sor, automatikusan töltődik.
+  // Jobbra húzás (rate-elés) → a dal véglegesen kikerül. Balra húzás (kihagyás) → a dal 24 órára
+  // eltűnik (frissítés után sem jön vissza), és csak akkor kerül elő, ha minden más elfogyott.
   const [deck, setDeck] = useState<DiscoverTrack[]>([])
+  const [skipped, setSkipped] = useState<DiscoverTrack[]>([])
   const [ratings, setRatings] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [exhausted, setExhausted] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [saveStatus, setSaveStatus] = useState<string | null>(null)
   const [showAuthModal, setShowAuthModal] = useState(false)
 
-  // Egy "oldal" album a legfrissebbtől lefelé, a dalaikkal, előadóval és értékelésekkel.
-  // Csak a megjelent (nem jövőbeli), dátummal és legalább egy dallal rendelkező albumok
-  // számítanak, a dátum nélküliek nem kerülhetnek előre.
-  async function fetchAlbumPage(
-    offset: number,
-    limit: number,
-    currentUserId: string | null
-  ): Promise<{ tracks: DiscoverTrack[]; albumCount: number }> {
-    const today = new Date().toISOString().slice(0, 10)
+  const seenIds = useRef<Set<string>>(new Set())
+  const fetching = useRef(false)
+  const seed = useRef('guest')
+  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const { data: albumsData, error } = await supabase
-      .from('albums')
-      .select(
-        'id, title, cover_url, spotify_album_id, artists(id, name), tracks!inner(id, title, spotify_track_id)'
-      )
-      .not('release_date', 'is', null)
-      .lte('release_date', today)
-      .order('release_date', { ascending: false, nullsFirst: false })
-      .order('id', { ascending: true })
-      .range(offset, offset + limit - 1)
+  const flash = useCallback((text: string, ms = 1500) => {
+    setSaveStatus(text)
+    if (statusTimer.current) clearTimeout(statusTimer.current)
+    statusTimer.current = setTimeout(() => setSaveStatus(null), ms)
+  }, [])
 
-    if (error || !albumsData) return { tracks: [], albumCount: 0 }
+  // A következő adag lekérése. Kizárjuk, ami már a sorban van, ami már volt, és a 24 órán belül kihagyottakat.
+  const loadMore = useCallback(async () => {
+    if (fetching.current) return
+    fetching.current = true
+    try {
+      let skippedIds = getSkippedIds()
+      let batch = await fetchDeckBatch([...seenIds.current, ...skippedIds], seed.current, DECK_BATCH)
 
-    const flatTracks: {
-      id: string
-      title: string
-      spotify_track_id: string | null
-      album: { id: string; title: string; cover_url: string | null; spotify_album_id: string | null }
-      artist: { id: string; name: string }
-    }[] = []
-
-    for (const a of albumsData as unknown as AlbumWithTracksRow[]) {
-      const artist = { id: a.artists?.id ?? '', name: a.artists?.name ?? 'Ismeretlen előadó' }
-      const album = {
-        id: a.id,
-        title: a.title,
-        cover_url: a.cover_url,
-        spotify_album_id: a.spotify_album_id,
+      // Ha csak a kihagyottak miatt nincs több dal, azok újra számítanak
+      if (batch && batch.length === 0 && skippedIds.length > 0) {
+        clearSkips()
+        skippedIds = []
+        batch = await fetchDeckBatch([...seenIds.current], seed.current, DECK_BATCH)
       }
-      for (const t of a.tracks ?? []) {
-        flatTracks.push({ id: t.id, title: t.title, spotify_track_id: t.spotify_track_id, album, artist })
+
+      if (batch === null) {
+        setLoadError(true)
+        return
       }
+      setLoadError(false)
+
+      const fresh = batch.filter((t) => !seenIds.current.has(t.id))
+      for (const t of fresh) seenIds.current.add(t.id)
+      if (fresh.length === 0) {
+        setExhausted(true)
+        return
+      }
+      setDeck((prev) => [...prev, ...spaceOut(fresh, prev.slice(-6))])
+    } finally {
+      fetching.current = false
     }
-
-    // Az értékeléseket kisebb csomagokban kérjük, hogy a lekérdezés URL-je ne legyen túl hosszú
-    const ratingsByTrack = new Map<string, number[]>()
-    const myRatings: Record<string, number> = {}
-    for (let i = 0; i < flatTracks.length; i += 100) {
-      const ids = flatTracks.slice(i, i + 100).map((t) => t.id)
-      const { data: chunk } = await supabase
-        .from('ratings')
-        .select('track_id, score, user_id')
-        .in('track_id', ids)
-      for (const r of chunk ?? []) {
-        const list = ratingsByTrack.get(r.track_id) ?? []
-        list.push(Number(r.score))
-        ratingsByTrack.set(r.track_id, list)
-        if (currentUserId && r.user_id === currentUserId) myRatings[r.track_id] = Number(r.score)
-      }
-    }
-
-    const tracks = flatTracks.map((t) => {
-      const scores = ratingsByTrack.get(t.id) ?? []
-      const avg = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null
-      return { ...t, communityAverage: avg, totalRatings: scores.length, userRating: myRatings[t.id] ?? null }
-    })
-
-    return { tracks, albumCount: albumsData.length }
-  }
+  }, [])
 
   useEffect(() => {
-    async function load() {
+    async function init() {
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      const currentUserId = user?.id ?? null
-      setUserId(currentUserId)
-
-      // Mindig a legfrissebb kiadásokkal kezdünk. Ha az első albumokat már mind
-      // értékelted, lapozunk a régebbiekre, amíg nincs elég még nem értékelt dal.
-      const PAGE_SIZE = 20
-      const TARGET = 25
-      const MAX_PAGES = 15
-      const finalDeck: DiscoverTrack[] = []
-      const myRatings: Record<string, number> = {}
-
-      for (let page = 0; page < MAX_PAGES && finalDeck.length < TARGET; page++) {
-        const { tracks, albumCount } = await fetchAlbumPage(page * PAGE_SIZE, PAGE_SIZE, currentUserId)
-        for (const t of tracks) {
-          if (t.userRating !== null) myRatings[t.id] = t.userRating
-          else finalDeck.push(t)
-        }
-        if (albumCount < PAGE_SIZE) break
-      }
-
-      setDeck(finalDeck)
-      setRatings(myRatings)
+      setUserId(user?.id ?? null)
+      seed.current = deckSeed(user?.id ?? null)
+      await loadMore()
       setLoading(false)
     }
+    void init()
+  }, [loadMore])
 
-    load()
-  }, [])
+  // Folyamatos utántöltés: ha fogy a sor, kérjük a következő adagot
+  useEffect(() => {
+    if (loading || exhausted || loadError) return
+    if (deck.length <= REFILL_AT) void loadMore()
+  }, [deck.length, loading, exhausted, loadError, loadMore])
+
+  // Ha minden elfogyott, a kihagyott dalok újra végignézhetők
+  function reviewSkipped(list: DiscoverTrack[]) {
+    clearSkips()
+    setDeck(list)
+    setSkipped([])
+  }
 
   const currentTrack = deck[0]
-  const currentRating = currentTrack ? ratings[currentTrack.id] ?? 7.5 : 7.5
+  const currentRating = currentTrack ? (ratings[currentTrack.id] ?? null) : null
 
   const handleRatingChange = useCallback(
     (val: number) => {
@@ -145,7 +120,7 @@ export default function DiscoverPage() {
     [currentTrack]
   )
 
-  // Igaz, ha a mentés sikerült — a hívó csak ekkor veszi ki a dalt a sorból
+  // Igaz, ha a mentés sikerült: a hívó csak ekkor veszi ki a dalt a sorból
   async function saveRating(trackId: string, score: number): Promise<boolean> {
     if (!userId) return false
 
@@ -155,36 +130,59 @@ export default function DiscoverPage() {
 
     if (!error) {
       await updateUserStats(userId)
+      window.dispatchEvent(new CustomEvent('scale:rated', { detail: { trackId, score } }))
     }
 
-    setSaveStatus(error ? 'Hiba a mentéskor' : 'Mentve!')
-    setTimeout(() => setSaveStatus(null), 1500)
+    flash(error ? 'Hiba a mentéskor' : 'Mentve!')
     return !error
   }
 
-  // "Tovább" / balra húzás: a dal a sor végére kerül, nem rate-elődik
+  // "Tovább" / balra húzás: a dal kikerül a sorból, és 24 órára nem jön vissza
   function handleSkip() {
-    setDeck((prev) => (prev.length > 1 ? [...prev.slice(1), prev[0]] : prev))
+    if (!currentTrack) return
+    const track = currentTrack
+    addSkip(track.id)
+    const nextDeck = deck.slice(1)
+    const nextSkipped = [...skipped, track]
+    // Ha ez volt az utolsó dal, a kihagyottak újra sorra kerülnek
+    if (nextDeck.length === 0 && exhausted) {
+      reviewSkipped(nextSkipped)
+    } else {
+      setDeck(nextDeck)
+      setSkipped(nextSkipped)
+    }
   }
 
-  // "Előző": a sor visszafelé forgatása — az utoljára hátrakerült dal jön vissza elsőnek
+  // "Előző": az utoljára kihagyott dal jön vissza elsőnek
   function handlePrev() {
-    setDeck((prev) =>
-      prev.length > 1 ? [prev[prev.length - 1], ...prev.slice(0, -1)] : prev
-    )
+    if (skipped.length === 0) return
+    const last = skipped[skipped.length - 1]
+    removeSkip(last.id)
+    setSkipped((prev) => prev.slice(0, -1))
+    setDeck((prev) => [last, ...prev])
   }
 
-  // Jobbra húzás / Mentés gomb: rate-elés, majd a dal véglegesen kikerül a sorból
-  // Kijelentkezve a dal marad a helyén (a vendég tovább próbálgathatja),
-  // és felugrik a bejelentkezési popup.
+  // Jobbra húzás / Mentés gomb: rate-elés, majd a dal véglegesen kikerül a sorból.
+  // A pontszámot a csúszka megmozdításával kell megadni, enélkül nem menthető.
+  // Kijelentkezve a dal marad a helyén, és felugrik a bejelentkezési popup.
   async function handleRateAndRemove() {
     if (!currentTrack) return
+    if (currentRating === null) {
+      flash('Előbb állítsd be a pontszámot a csúszkával!', 2200)
+      return
+    }
     if (!userId) {
       setShowAuthModal(true)
       return
     }
     const ok = await saveRating(currentTrack.id, currentRating)
-    if (ok) setDeck((prev) => prev.slice(1))
+    if (!ok) return
+    const nextDeck = deck.slice(1)
+    if (nextDeck.length === 0 && exhausted && skipped.length > 0) {
+      reviewSkipped(skipped)
+    } else {
+      setDeck(nextDeck)
+    }
   }
 
   async function handleSwipe(direction: 'left' | 'right') {
@@ -204,9 +202,48 @@ export default function DiscoverPage() {
   }
 
   if (deck.length === 0) {
+    if (loadError) {
+      return (
+        <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 text-center text-neutral-500">
+          <p>Most nem sikerült betölteni a dalokat.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoadError(false)
+              void loadMore()
+            }}
+            className="rounded-full bg-black px-5 py-2 text-xs font-semibold text-white hover:bg-gray-800"
+          >
+            Újra próbálom
+          </button>
+        </div>
+      )
+    }
+    if (!exhausted) {
+      return (
+        <div className="flex min-h-[70vh] items-center justify-center text-neutral-400">
+          Betöltés...
+        </div>
+      )
+    }
+    if (skipped.length > 0) {
+      return (
+        <div className="flex min-h-[70vh] flex-col items-center justify-center gap-3 text-center text-neutral-500">
+          <p>Mára ennyi új dal volt.</p>
+          <p className="text-sm">A kihagyott dalokat újra végignézheted.</p>
+          <button
+            type="button"
+            onClick={() => reviewSkipped(skipped)}
+            className="rounded-full bg-black px-5 py-2 text-xs font-semibold text-white hover:bg-gray-800"
+          >
+            Kihagyottak újra
+          </button>
+        </div>
+      )
+    }
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-2 text-center text-neutral-500">
-        <p>Az egész katalógust rate-elted! 🎉</p>
+        <p>Az egész katalógust értékelted! 🎉</p>
         <p className="text-sm">Gyere vissza, ha új kiadás kerül a katalógusba.</p>
       </div>
     )
@@ -258,7 +295,8 @@ export default function DiscoverPage() {
           <button
             type="button"
             onClick={handlePrev}
-            className="flex items-center gap-0.5 rounded-full p-1 transition-colors hover:bg-neutral-200/80 hover:text-neutral-700"
+            disabled={skipped.length === 0}
+            className="flex items-center gap-0.5 rounded-full p-1 transition-colors hover:bg-neutral-200/80 hover:text-neutral-700 disabled:opacity-40 disabled:hover:bg-transparent"
           >
             <ChevronLeft className="h-4 w-4" />
             <span className="text-[11px] font-medium">Előző</span>
@@ -267,7 +305,9 @@ export default function DiscoverPage() {
           <button
             type="button"
             onClick={handleRateAndRemove}
-            className="rounded-full bg-black px-5 py-2 text-xs font-semibold text-white transition hover:bg-gray-800"
+            className={`rounded-full px-5 py-2 text-xs font-semibold text-white transition ${
+              currentRating === null ? 'bg-neutral-400 hover:bg-neutral-500' : 'bg-black hover:bg-gray-800'
+            }`}
           >
             Mentés
           </button>

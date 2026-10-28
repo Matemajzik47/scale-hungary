@@ -11,7 +11,7 @@ import type { PlayerTrack } from '@/components/player/types'
 
 // Gyors értékelés a mini lejátszóból: ugyanaz a csúszka, mint a Felfedezésben, felugró lapon.
 export function RateSheet({ track, open, onClose }: { track: PlayerTrack; open: boolean; onClose: () => void }) {
-  const [rating, setRating] = useState(7.5)
+  const [rating, setRating] = useState<number | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [checked, setChecked] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -44,7 +44,7 @@ export function RateSheet({ track, open, onClose }: { track: PlayerTrack; open: 
   }, [open, track.trackId])
 
   async function handleSave() {
-    if (!userId || saving) return
+    if (!userId || saving || rating === null) return
     setSaving(true)
     const { error } = await supabase
       .from('ratings')
@@ -118,7 +118,7 @@ export function RateSheet({ track, open, onClose }: { track: PlayerTrack; open: 
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving || !checked}
+                disabled={saving || !checked || rating === null}
                 className="w-full rounded-full bg-black px-5 py-3 text-sm font-semibold text-white transition hover:bg-gray-800 active:scale-[0.98] disabled:opacity-50"
               >
                 {status ?? (saving ? 'Mentés...' : 'Mentés')}
