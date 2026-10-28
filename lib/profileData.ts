@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { Profile, UserStats } from '@/types/database'
+import { fetchProgress, type Progress } from '@/lib/progress'
 
 type RatingRow = { score: number; track_id: string }
 type TrackRow = { id: string; title: string; album_id: string }
@@ -17,6 +18,8 @@ export interface ProfileData {
   stats: UserStats
   curatorScore: number | null
   topAlbums: TopAlbum[]
+  // XP, szint, kredit; null, ha az add-levels.sql még nincs lefuttatva
+  progress: Progress | null
 }
 
 /**
@@ -121,5 +124,7 @@ async function loadProfileDataForUser(profile: Profile): Promise<ProfileData> {
       .slice(0, 6)
   }
 
-  return { profile, stats, curatorScore, topAlbums }
+  const progress = await fetchProgress(profile.id)
+
+  return { profile, stats, curatorScore, topAlbums, progress }
 }

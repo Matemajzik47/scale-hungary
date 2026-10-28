@@ -2,7 +2,8 @@
 
 import type { ReactNode } from 'react'
 import { Flame, Calendar, Star, Disc3 } from 'lucide-react'
-import { getTierForRatings } from '@/lib/tiers'
+import { getLevelInfo } from '@/lib/levels'
+import { ProgressCard } from '@/components/profile/ProgressCard'
 import { Reveal } from '@/components/landing/Reveal'
 import { CardBackgroundButton } from '@/components/profile/CardBackgroundButton'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
@@ -19,8 +20,10 @@ interface ProfileDisplayProps {
 }
 
 export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisplayProps) {
-  const { profile, stats, curatorScore, topAlbums } = data
-  const tier = getTierForRatings(stats.total_ratings ?? 0)
+  const { profile, stats, curatorScore, topAlbums, progress } = data
+  // Ha az XP még nem érhető el (add-levels.sql nincs lefuttatva), becslés az értékelések számából
+  const level = progress?.level ?? getLevelInfo((stats.total_ratings ?? 0) * 10)
+  const isOwn = Boolean(onCardBgChange)
   const joinedLabel = new Date(profile.created_at).toLocaleDateString('hu-HU', {
     year: 'numeric',
     month: 'short',
@@ -47,7 +50,7 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
         </div>
 
         <div className="inline-flex items-center gap-1 rounded-full border border-[#FF5B37]/20 bg-[#FFF5F2] px-2.5 py-1 text-[#FF5B37] shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-tight">{tier.label}</span>
+          <span className="text-[10px] font-bold uppercase tracking-tight">{level.title}</span>
         </div>
       </header>
       </Reveal>
@@ -57,7 +60,7 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
       <Reveal delay={0.08}>
       <MusicIdCard
         username={profile.username}
-        tierLabel={tier.label}
+        tierLabel={`${level.title} · ${level.level}. szint`}
         curatorScore={curatorScore}
         totalRatings={stats.total_ratings ?? 0}
         streak={stats.current_streak ?? 0}
@@ -73,6 +76,12 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
           currentPos={posFromProfile(profile)}
           onChange={onCardBgChange}
         />
+      )}
+
+      {progress && (
+        <Reveal delay={0.1}>
+          <ProgressCard progress={progress} showCredits={isOwn} />
+        </Reveal>
       )}
 
       {topAlbums.length > 0 && (

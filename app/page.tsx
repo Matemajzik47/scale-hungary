@@ -259,7 +259,7 @@ export default async function Home() {
               },
               {
                 t: 'Pontok beváltása',
-                d: 'A szintekhez jutalmak és creditek tartoznak majd. Hamarosan itt találod őket.',
+                d: 'Minden értékelésért XP-t és krediteket kapsz. A szintekhez jutalmak tartoznak, a kreditet hamarosan jutalmakra válthatod.',
               },
             ].map((x, i) => (
               <Reveal key={x.t} delay={i * 0.08}>
@@ -278,7 +278,7 @@ export default async function Home() {
             <div className="mb-3 font-mono text-xs font-bold uppercase tracking-[0.1em] text-[#5F6064]">
               Szintek és jutalmak
             </div>
-            <ol className="grid gap-3 md:grid-cols-5">
+            <ol className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
               {TIERS.map((tier, i) => {
                 const isTop = i === TIERS.length - 1
                 return (
@@ -290,7 +290,7 @@ export default async function Home() {
                   >
                     <div>
                       <div className="font-mono text-[11px] font-bold uppercase tracking-[0.1em] text-[#FF5B37]">
-                        {tier.minRatings === 0 ? 'Induló szint' : `${tier.minRatings} értékeléstől`}
+                        {tier.minXp === 0 ? 'Induló szint' : `${tier.minXp} XP-től`}
                       </div>
                       <h4 className="mt-1 font-[family-name:var(--font-display)] text-xl font-extrabold tracking-[-0.02em]">
                         {tier.label}
