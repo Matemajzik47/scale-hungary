@@ -22,10 +22,18 @@ async function countRows(table: 'artists' | 'albums' | 'tracks' | 'ratings'): Pr
   return error ? null : count ?? 0
 }
 
+// Csak a tényleges albumok (és EP-k): az önálló számok is albumként vannak tárolva, azokat nem számoljuk.
+// Ha az album_count függvény még nincs létrehozva (add-album-count.sql), az összes kiadást számoljuk.
+async function countRealAlbums(): Promise<number | null> {
+  const { data, error } = await supabase.rpc('album_count', { p_min_tracks: 4 })
+  if (error || data === null || data === undefined) return countRows('albums')
+  return Number(data)
+}
+
 async function getLandingData() {
   const [artists, albums, tracks, ratings] = await Promise.all([
     countRows('artists'),
-    countRows('albums'),
+    countRealAlbums(),
     countRows('tracks'),
     countRows('ratings'),
   ])
@@ -34,6 +42,8 @@ async function getLandingData() {
     .from('albums')
     .select('id, title, cover_url, artists(name), tracks(id, title)')
     .not('cover_url', 'is', null)
+    .not('release_date', 'is', null)
+    .lte('release_date', new Date().toISOString().slice(0, 10))
     .order('release_date', { ascending: false })
     .limit(24)
 
@@ -320,9 +330,14 @@ export default async function Home() {
 
         <footer className="flex flex-wrap justify-between gap-3 pb-8 font-mono text-xs text-[#5F6064]">
           <span>Scale · ID for your taste</span>
-          <Link href="/privacy" className="underline-offset-2 hover:underline">
-            Adatvédelmi nyilatkozat
-          </Link>
+          <span className="flex gap-4">
+            <Link href="/terms" className="underline-offset-2 hover:underline">
+              Felhasználási feltételek
+            </Link>
+            <Link href="/privacy" className="underline-offset-2 hover:underline">
+              Adatvédelmi nyilatkozat
+            </Link>
+          </span>
         </footer>
       </div>
     </main>
