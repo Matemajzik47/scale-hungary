@@ -5,7 +5,6 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Disc3, Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { fetchProgress } from '@/lib/progress'
-import { getLevelInfo } from '@/lib/levels'
 
 type Toast = {
   id: number
@@ -20,7 +19,7 @@ type Toast = {
 export function ProgressToast() {
   const [toast, setToast] = useState<Toast | null>(null)
   const userId = useRef<string | null>(null)
-  const lastXp = useRef<number | null>(null)
+  const last = useRef<{ xp: number; level: number } | null>(null)
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const counter = useRef(0)
 
@@ -29,7 +28,7 @@ export function ProgressToast() {
 
     async function prime(uid: string) {
       const p = await fetchProgress(uid)
-      if (!cancelled && userId.current === uid) lastXp.current = p ? p.xp : null
+      if (!cancelled && userId.current === uid) last.current = p ? { xp: p.xp, level: p.level.level } : null
     }
 
     supabase.auth.getSession().then(({ data }) => {
@@ -42,7 +41,7 @@ export function ProgressToast() {
       const uid = session?.user.id ?? null
       if (uid !== userId.current) {
         userId.current = uid
-        lastXp.current = null
+        last.current = null
         if (uid) void prime(uid)
       }
     })
@@ -52,14 +51,13 @@ export function ProgressToast() {
       if (!uid) return
       const p = await fetchProgress(uid)
       if (!p || userId.current !== uid) return
-      const before = lastXp.current
-      lastXp.current = p.xp
+      const before = last.current
+      last.current = { xp: p.xp, level: p.level.level }
       if (before === null) return
-      const gained = p.xp - before
+      const gained = p.xp - before.xp
       if (gained <= 0) return
 
-      const beforeLevel = getLevelInfo(before).level
-      const levelUp = p.level.level > beforeLevel ? { level: p.level.level, title: p.level.title } : null
+      const levelUp = p.level.level > before.level ? { level: p.level.level, title: p.level.title } : null
 
       counter.current += 1
       setToast({ id: counter.current, gained, levelUp })

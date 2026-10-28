@@ -24,10 +24,10 @@ create policy "Sajat kredit naplo olvashato" on credit_ledger
 
 /*
   XP-szabályok (a napi nap Europe/Budapest szerint):
-    + 10  új dal értékelése (a módosítás nem ad pontot, mert a created_at nem változik)
-          napi legfeljebb 20 értékelés számít
-    +  5  friss kiadás (a megjelenéstől számított 14 napon belül értékelve)
-    +  5  a dal első 10 értékelője között voltál (kis előadó / korai felfedezés)
+    + 10  új dal értékelése (a módosítás nem ad pontot, mert a created_at nem változik);
+          egy napon az első 10 értékelés ér teljes XP-t, a 11–20. csak 3 XP-t, efölött nincs
+    +  5  friss kiadás (a megjelenéstől számított 14 napon belül értékelve), csak a teljes XP-s értékelésekre
+    +  5  a dal első 10 értékelője között voltál (kis előadó / korai felfedezés), csak a teljes XP-s értékelésekre
     + 10  napi első értékelés bónusz
     + 2/nap  széria-bónusz (legfeljebb +20)
     + 100 / 500 / 2000  a 7. / 30. / 100. egymást követő napon (egyszeri)
@@ -63,11 +63,14 @@ as $$
     left join albums a on a.id = t.album_id
   ),
   per_rating as (
-    select case when n_in_day <= 20 then
-             10
-             + case when release_date is not null and release_date <= d and release_date >= d - 14 then 5 else 0 end
-             + case when rank_on_track <= 10 then 5 else 0 end
-           else 0 end as pts
+    select case
+             when n_in_day <= 10 then
+               10
+               + case when release_date is not null and release_date <= d and release_date >= d - 14 then 5 else 0 end
+               + case when rank_on_track <= 10 then 5 else 0 end
+             when n_in_day <= 20 then 3
+             else 0
+           end as pts
     from ranked
   ),
   days as (select distinct d from mine),

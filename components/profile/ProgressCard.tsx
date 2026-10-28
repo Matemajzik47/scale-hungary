@@ -72,9 +72,12 @@ export function ProgressCard({ progress, showCredits }: ProgressCardProps) {
           <span>
             {level.nextXp === null
               ? 'Elérted a legmagasabb szintet'
-              : `Még ${level.xpToNext} XP a következő szintig`}
+              : level.gateLocked
+                ? 'Az XP már megvan, de még van egy feltétel'
+                : `Még ${level.xpToNext} XP a következő szintig`}
           </span>
         </div>
+        {level.gateNote && <p className="text-[10px] leading-snug text-neutral-400">{level.gateNote}</p>}
       </div>
 
       <div className="flex flex-col gap-2 border-t border-neutral-100 pt-3">

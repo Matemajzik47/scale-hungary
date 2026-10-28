@@ -1,9 +1,10 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Flame, Calendar, Star, Disc3 } from 'lucide-react'
 import { getLevelInfo } from '@/lib/levels'
 import { ProgressCard } from '@/components/profile/ProgressCard'
+import { LevelsModal } from '@/components/profile/LevelsModal'
 import { Reveal } from '@/components/landing/Reveal'
 import { CardBackgroundButton } from '@/components/profile/CardBackgroundButton'
 import { MusicIdCard } from '@/components/profile/MusicIdCard'
@@ -24,6 +25,7 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
   // Ha az XP még nem érhető el (add-levels.sql nincs lefuttatva), becslés az értékelések számából
   const level = progress?.level ?? getLevelInfo((stats.total_ratings ?? 0) * 10)
   const isOwn = Boolean(onCardBgChange)
+  const [levelsOpen, setLevelsOpen] = useState(false)
   const joinedLabel = new Date(profile.created_at).toLocaleDateString('hu-HU', {
     year: 'numeric',
     month: 'short',
@@ -57,10 +59,13 @@ export function ProfileDisplay({ data, socialSlot, onCardBgChange }: ProfileDisp
 
       {socialSlot}
 
+      <LevelsModal isOpen={levelsOpen} onClose={() => setLevelsOpen(false)} level={level} />
+
       <Reveal delay={0.08}>
       <MusicIdCard
         username={profile.username}
         tierLabel={`${level.title} · ${level.level}. szint`}
+        onTierClick={() => setLevelsOpen(true)}
         curatorScore={curatorScore}
         totalRatings={stats.total_ratings ?? 0}
         streak={stats.current_streak ?? 0}

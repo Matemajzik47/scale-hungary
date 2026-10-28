@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
-import { ShieldCheck, Flame } from 'lucide-react'
+import { ShieldCheck, Flame, ChevronRight } from 'lucide-react'
 import { ScaleLogo } from '@/components/ScaleLogo'
 import type { ReactNode } from 'react'
 import { CardQr } from '@/components/profile/CardQr'
@@ -13,6 +13,8 @@ interface MusicIdCardProps {
   curatorScore: number | null
   totalRatings: number
   streak: number
+  // Ha meg van adva, a szint-címke kattintható (a szintek listáját nyitja)
+  onTierClick?: () => void
   joinedLabel?: string
   bgUrl?: string | null
   bgPos?: CardBgPos
@@ -50,6 +52,7 @@ export function MusicIdCard({
   curatorScore,
   totalRatings,
   streak,
+  onTierClick,
   joinedLabel,
   bgUrl,
   bgPos = DEFAULT_BG_POS,
@@ -108,7 +111,7 @@ export function MusicIdCard({
         )}
 
         {autoSheen && (
-          <div className="card-sheen pointer-events-none absolute inset-y-[-10%] -left-[40%] z-20 w-[34%] bg-gradient-to-r from-transparent via-white/40 to-transparent blur-[2px]" />
+          <div className="card-sheen pointer-events-none absolute inset-y-[-10%] -left-[40%] z-20 w-[34%] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
         )}
 
         <div className="relative z-10 flex min-h-[196px] flex-col justify-between gap-3">
@@ -119,10 +122,23 @@ export function MusicIdCard({
                 Scale Music Taste ID
               </span>
             </div>
-            <span className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm">
-              <ShieldCheck className="h-3 w-3 text-[#FF8F68]" />
-              {tierLabel}
-            </span>
+            {onTierClick ? (
+              <button
+                type="button"
+                onClick={onTierClick}
+                aria-label="Szintek megnyitása"
+                className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm transition-colors hover:bg-white/20 active:scale-95"
+              >
+                <ShieldCheck className="h-3 w-3 text-[#FF8F68]" />
+                {tierLabel}
+                <ChevronRight className="h-3 w-3 text-neutral-300" />
+              </button>
+            ) : (
+              <span className="flex items-center gap-1 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 font-mono text-[10px] text-neutral-100 backdrop-blur-sm">
+                <ShieldCheck className="h-3 w-3 text-[#FF8F68]" />
+                {tierLabel}
+              </span>
+            )}
           </div>
 
           <div className="flex items-start justify-between gap-3">

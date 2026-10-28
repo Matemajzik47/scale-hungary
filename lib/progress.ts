@@ -44,6 +44,6 @@ export async function fetchProgress(userId: string): Promise<Progress | null> {
     maxStreak: row.max_streak,
     earlyRatings: row.early_ratings,
     releaseDayRatings: row.release_day_ratings,
-    level: getLevelInfo(row.xp),
+    level: getLevelInfo(row.xp, { totalRatings: row.total_ratings, maxStreak: row.max_streak }),
   }
 }
