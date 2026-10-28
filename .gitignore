@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# adatmentések (felhasználói adat, SOHA ne kerüljön GitHubra)
+/backups/
+
+# import szkript munkafájlok
+.import-hu-*.json
+import.log
