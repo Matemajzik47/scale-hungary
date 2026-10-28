@@ -44,7 +44,7 @@ export const maxDuration = 300
 const BACKFILL_PAGE_SIZE = 40
 
 // Ennyi Spotify nélküli albumot próbálunk újra összepárosítani egy futás alatt
-const REPAIR_BATCH_SIZE = 10
+const REPAIR_BATCH_SIZE = 40
 // Egy sikertelen párosítást ennyi nap múlva próbálunk újra
 const REPAIR_RETRY_DAYS = 30
 
@@ -652,7 +652,7 @@ type RepairAlbumRow = {
  * keresővel. Egy sikertelen próbát a spotify_checked_at jelzi, így ugyanaz az
  * album nem kerül sorra minden futásnál, csak REPAIR_RETRY_DAYS nap múlva.
  */
-async function runSpotifyRepair(summary: SyncSummary) {
+async function runSpotifyRepair(summary: SyncSummary, hasTime: () => boolean) {
   const cutoff = new Date(Date.now() - REPAIR_RETRY_DAYS * 24 * 60 * 60 * 1000).toISOString()
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   const recentFrom = new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -673,6 +673,7 @@ async function runSpotifyRepair(summary: SyncSummary) {
   if (error) throw error
 
   for (const album of (data ?? []) as unknown as RepairAlbumRow[]) {
+    if (!hasTime()) break
     const artistName = album.artists?.name
     try {
       const match = artistName ? await searchSpotifyAlbum(artistName, album.title) : null
@@ -834,7 +835,7 @@ async function runSync(summary: SyncSummary) {
 
   // 4. Spotify nélküli albumok újrapárosítása (a legfrissebbek előbb)
   try {
-    if (hasTime() && !spotifyPaused()) await runSpotifyRepair(summary)
+    if (hasTime() && !spotifyPaused()) await runSpotifyRepair(summary, hasTime)
   } catch (err) {
     summary.errors.push(`Pótlás: ${errorMessage(err)}`)
   }
