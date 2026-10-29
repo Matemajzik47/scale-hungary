@@ -14,6 +14,9 @@ import {
   setSpotifyBlockedUntil,
   searchSpotifyAlbum,
   getArtistReleases,
+  getArtistAllReleases,
+  albumTitlesMatch,
+  getSpotifyRequestCount,
   getAlbumTracks,
   findSpotifyArtistId,
 } from '@/lib/spotify-server'
@@ -44,7 +47,7 @@ export const maxDuration = 300
 const BACKFILL_PAGE_SIZE = 40
 
 // Ennyi Spotify nélküli albumot próbálunk újra összepárosítani egy futás alatt
-const REPAIR_BATCH_SIZE = 40
+const REPAIR_BATCH_SIZE = 15
 // Egy sikertelen párosítást ennyi nap múlva próbálunk újra
 const REPAIR_RETRY_DAYS = 30
 
@@ -197,7 +200,7 @@ async function classifyArtist(mbArtistId: string, name: string): Promise<ArtistO
  * Egyetlen MusicBrainz release feldolgozása: artist/album/track beszúrása,
  * ha még nem létezik. Ugyanaz a logika a friss és a backfill ágban is.
  */
-async function processRelease(release: MbRelease, summary: SyncSummary) {
+async function processRelease(release: MbRelease, summary: SyncSummary, useSpotify = true) {
   try {
     let { data: artist } = await supabaseAdmin
       .from('artists')
@@ -256,10 +259,12 @@ async function processRelease(release: MbRelease, summary: SyncSummary) {
     // Ha a Spotify éppen korlátoz, a kiadás Spotify nélkül is bekerül (helyőrző dallal),
     // a Spotify-pótlás később kiegészíti a borítóval és a valódi dallal.
     let spotifyMatch: Awaited<ReturnType<typeof searchSpotifyAlbum>> = null
-    try {
-      spotifyMatch = await searchSpotifyAlbum(release.artistName, release.title)
-    } catch (e) {
-      if (!(e instanceof SpotifyRateLimitError)) throw e
+    if (useSpotify) {
+      try {
+        spotifyMatch = await searchSpotifyAlbum(release.artistName, release.title)
+      } catch (e) {
+        if (!(e instanceof SpotifyRateLimitError)) throw e
+      }
     }
 
     const normalizedDate = normalizeDate(release.date)
@@ -352,8 +357,9 @@ async function runBackfillBatch(summary: SyncSummary) {
     total = Math.min(page.total, MB_MAX_RESULTS)
   }
 
+  // Az archív kiadásokhoz nem kérdezzük a Spotify-t: a párosítást az előadó-alapú pótlás végzi, kevesebb kérésből
   for (const release of releases) {
-    await processRelease(release, summary)
+    await processRelease(release, summary, false)
   }
 
   const nextOffset = offset + releases.length
@@ -640,6 +646,149 @@ export async function GET(request: NextRequest) {
 }
 
 
+
+// Egy futásban ennyi Spotify-kérést engedünk az előadó-alapú pótlásnak (a Spotify korlátozza a kérések számát)
+const ARTIST_REPAIR_REQUEST_BUDGET = 110
+
+type UnmatchedAlbumRow = {
+  id: string
+  title: string
+  artist_id: string
+  artists: { name: string; spotify_artist_id: string | null } | null
+}
+
+/** A Spotify-párosítás beírása egy albumhoz: borító, azonosító, és a helyőrző dal cseréje a valódiakra. */
+async function applySpotifyMatch(
+  albumId: string,
+  spotifyAlbumId: string,
+  coverUrl: string | null,
+  tracks: { id: string; title: string }[],
+  summary: SyncSummary
+): Promise<boolean> {
+  // A spotify_album_id egyedi: ha már másik albumhoz tartozik, nem írjuk át
+  const { data: taken } = await supabaseAdmin
+    .from('albums')
+    .select('id')
+    .eq('spotify_album_id', spotifyAlbumId)
+    .maybeSingle()
+  if (taken && taken.id !== albumId) return false
+
+  const { error: updateError } = await supabaseAdmin
+    .from('albums')
+    .update({ spotify_album_id: spotifyAlbumId, cover_url: coverUrl })
+    .eq('id', albumId)
+  if (updateError) throw updateError
+
+  if (tracks.length === 0) return true
+
+  // Olyan dalt nem szúrunk be, aminek a Spotify-azonosítója már szerepel (egyedi mező)
+  const { data: existing } = await supabaseAdmin
+    .from('tracks')
+    .select('spotify_track_id')
+    .in('spotify_track_id', tracks.map((t) => t.id))
+  const existingIds = new Set((existing ?? []).map((t) => t.spotify_track_id))
+  const usable = tracks.filter((t) => !existingIds.has(t.id))
+  if (usable.length === 0) return true
+
+  const { data: placeholders } = await supabaseAdmin
+    .from('tracks')
+    .select('id')
+    .eq('album_id', albumId)
+    .is('spotify_track_id', null)
+  const placeholderIds = (placeholders ?? []).map((p) => p.id)
+
+  let toInsert = usable
+  if (placeholderIds.length > 0) {
+    if (usable.length === 1) {
+      const { error } = await supabaseAdmin
+        .from('tracks')
+        .update({ title: usable[0].title, spotify_track_id: usable[0].id })
+        .eq('id', placeholderIds[0])
+      if (error) throw error
+      toInsert = []
+    } else {
+      const { data: rated } = await supabaseAdmin.from('ratings').select('track_id').in('track_id', placeholderIds)
+      const ratedSet = new Set((rated ?? []).map((r) => r.track_id))
+      const deletable = placeholderIds.filter((id) => !ratedSet.has(id))
+      if (deletable.length > 0) await supabaseAdmin.from('tracks').delete().in('id', deletable)
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const { error } = await supabaseAdmin
+      .from('tracks')
+      .insert(toInsert.map((t) => ({ album_id: albumId, title: t.title, spotify_track_id: t.id })))
+    if (error) throw error
+  }
+  summary.newTracks += usable.length
+  return true
+}
+
+/**
+ * Előadó-alapú Spotify-pótlás: az előadó összes Spotify-kiadását egyszerre kérdezi le, és ebből
+ * párosítja a hiányzó albumait cím szerint. Így sokkal kevesebb kérés kell, mint albumonkénti
+ * kereséssel. A legfrissebb kiadások előadói kerülnek előre, és egy futás kérés-kerettel dolgozik.
+ */
+async function runArtistRepair(summary: SyncSummary, hasTime: () => boolean) {
+  const cutoff = new Date(Date.now() - REPAIR_RETRY_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabaseAdmin
+    .from('albums')
+    .select('id, title, artist_id, artists(name, spotify_artist_id)')
+    .is('spotify_album_id', null)
+    .or(`spotify_checked_at.is.null,spotify_checked_at.lt.${cutoff}`)
+    .order('release_date', { ascending: false, nullsFirst: false })
+    .limit(300)
+  if (error) throw error
+
+  const groups = new Map<string, UnmatchedAlbumRow[]>()
+  for (const row of (data ?? []) as unknown as UnmatchedAlbumRow[]) {
+    const list = groups.get(row.artist_id) ?? []
+    list.push(row)
+    groups.set(row.artist_id, list)
+  }
+
+  const startRequests = getSpotifyRequestCount()
+  const now = () => new Date().toISOString()
+
+  for (const albums of groups.values()) {
+    if (!hasTime() || getSpotifyRequestCount() - startRequests >= ARTIST_REPAIR_REQUEST_BUDGET) break
+    const artist = albums[0].artists
+    if (!artist) continue
+    const albumIds = albums.map((a) => a.id)
+
+    try {
+      let spotifyArtistId = artist.spotify_artist_id
+      if (!spotifyArtistId) {
+        spotifyArtistId = await findSpotifyArtistId(artist.name, albums.map((a) => a.title).slice(0, 10))
+        if (spotifyArtistId) {
+          // ha az azonosító már másnál szerepel, nem baj
+          await supabaseAdmin.from('artists').update({ spotify_artist_id: spotifyArtistId }).eq('id', albums[0].artist_id)
+        }
+      }
+
+      if (spotifyArtistId) {
+        const releases = await getArtistAllReleases(spotifyArtistId)
+        for (const album of albums) {
+          if (getSpotifyRequestCount() - startRequests >= ARTIST_REPAIR_REQUEST_BUDGET + 30) break
+          const rel = releases.find((r) => albumTitlesMatch(r.title, album.title))
+          if (!rel) continue
+          const tracks = await getAlbumTracks(rel.id)
+          if (await applySpotifyMatch(album.id, rel.id, rel.coverUrl, tracks, summary)) summary.repairedAlbums++
+        }
+      }
+
+      // Akit most megvizsgáltunk, azt 30 napig nem próbáljuk újra
+      await supabaseAdmin.from('albums').update({ spotify_checked_at: now() }).in('id', albumIds)
+    } catch (err) {
+      if (err instanceof SpotifyRateLimitError) {
+        summary.errors.push(`Előadó-alapú pótlás megállt (${artist.name}): ${errorMessage(err)}`)
+        break
+      }
+      summary.errors.push(`Előadó-alapú pótlás (${artist.name}): ${errorMessage(err)}`)
+    }
+  }
+}
+
 type RepairAlbumRow = {
   id: string
   title: string
@@ -835,6 +984,7 @@ async function runSync(summary: SyncSummary) {
 
   // 4. Spotify nélküli albumok újrapárosítása (a legfrissebbek előbb)
   try {
+    if (hasTime() && !spotifyPaused()) await runArtistRepair(summary, hasTime)
     if (hasTime() && !spotifyPaused()) await runSpotifyRepair(summary, hasTime)
   } catch (err) {
     summary.errors.push(`Pótlás: ${errorMessage(err)}`)

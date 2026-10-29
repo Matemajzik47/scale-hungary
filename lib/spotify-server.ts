@@ -48,10 +48,16 @@ export class SpotifyRateLimitError extends Error {
   }
 }
 
-const MIN_GAP_MS = 220 // kérések közti minimális szünet (kb. 4-5 kérés/mp)
+const MIN_GAP_MS = 350 // kérések közti minimális szünet (kb. 3 kérés/mp, hogy ne érjük el a Spotify korlátját)
 const MAX_WAIT_MS = 8000 // ennél hosszabb Retry-After esetén nem várunk, feladjuk
 let blockedUntil = 0
 let lastRequestAt = 0
+let requestCount = 0
+
+/** Az eddig kiküldött Spotify-kérések száma (egy futás keretének méréséhez). */
+export function getSpotifyRequestCount(): number {
+  return requestCount
+}
 
 /** A tiltás vége (ms). A szinkron elmenti az adatbázisba, így új szerverpéldány sem próbálkozik. */
 export function getSpotifyBlockedUntil(): number {
@@ -72,6 +78,7 @@ async function spotifyRequest(url: string, token: string): Promise<Response> {
     const wait = lastRequestAt + MIN_GAP_MS - Date.now()
     if (wait > 0) await sleep(wait)
     lastRequestAt = Date.now()
+    requestCount++
 
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     if (res.status !== 429) return res
@@ -272,4 +279,43 @@ export async function findSpotifyArtistId(artistName: string, knownAlbumTitles: 
     if (releases.some((r) => known.has(normalize(cleanTitle(r.title))))) return candidate.id
   }
   return null
+}
+
+
+/**
+ * Egy előadó összes albuma és kislemeze (lapozva), a hiányzó albumok címalapú párosításához.
+ * Egy kérés akár 50 kiadást ad, ez sokkal kevesebb kérés, mint albumonként keresni.
+ */
+export async function getArtistAllReleases(spotifyArtistId: string, maxPages = 6): Promise<SpotifyArtistRelease[]> {
+  const token = await getSpotifyToken()
+  const out: SpotifyArtistRelease[] = []
+  let limit = 50
+  for (let page = 0, offset = 0; page < maxPages; page++) {
+    const url = `https://api.spotify.com/v1/artists/${spotifyArtistId}/albums?include_groups=album,single&market=HU&limit=${limit}&offset=${offset}`
+    let res = await spotifyRequest(url, token)
+    if (res.status === 400 && limit > 10) {
+      // ha a Spotify kisebb oldalméretet enged, arra váltunk
+      limit = 10
+      res = await spotifyRequest(url.replace(/limit=\d+/, 'limit=10'), token)
+    }
+    if (!res.ok) throw new Error(`Spotify hiba: ${res.status} ${res.statusText}`)
+    const data = (await res.json()) as { items?: SpotifyAlbumItem[]; next?: string | null }
+    const items = data.items ?? []
+    for (const a of items) {
+      out.push({ id: a.id, title: a.name, releaseDate: a.release_date ?? '', coverUrl: a.images?.[0]?.url ?? null })
+    }
+    offset += items.length
+    if (items.length === 0 || !data.next) break
+  }
+  return out
+}
+
+/** Két album-cím egyezik-e (ékezetek, írásjelek, zárójeles kiegészítések nélkül). */
+export function albumTitlesMatch(a: string, b: string): boolean {
+  const x = normalize(cleanTitle(a))
+  const y = normalize(cleanTitle(b))
+  if (!x || !y) return false
+  if (x === y) return true
+  // rövid címeknél csak pontos egyezés, hogy ne legyen téves találat
+  return Math.min(x.length, y.length) >= 6 && (x.includes(y) || y.includes(x))
 }

@@ -51,6 +51,8 @@ as $$
     join artists ar on ar.id = a.artist_id
     where a.release_date is not null
       and a.release_date <= current_date
+      -- csak lejátszható dal kerül a Felfedezésbe (a Spotify-párosítás után jelenik meg)
+      and t.spotify_track_id is not null
       and not (t.id = any(p_exclude))
       and not exists (
         select 1 from ratings r where r.track_id = t.id and r.user_id = auth.uid()

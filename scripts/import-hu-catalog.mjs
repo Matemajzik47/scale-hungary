@@ -47,7 +47,7 @@ let lastRequestAt = 0
 
 async function mbGet(path) {
   let lastError = ''
-  for (let attempt = 1; attempt <= 5; attempt++) {
+  for (let attempt = 1; attempt <= 10; attempt++) {
     const wait = lastRequestAt + GAP_MS - Date.now()
     if (wait > 0) await sleep(wait)
     lastRequestAt = Date.now()
@@ -56,10 +56,11 @@ async function mbGet(path) {
       if (res.ok) return await res.json()
       lastError = `${res.status} ${res.statusText}`
       if (res.status !== 503 && res.status !== 429 && res.status < 500) break
-      await sleep(3000 * attempt)
+      // a MusicBrainz túlterheltsége általában pár perc alatt elmúlik: egyre hosszabb szünet (max. 90 mp)
+      await sleep(Math.min(90000, 5000 * attempt * attempt))
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err)
-      await sleep(3000 * attempt)
+      await sleep(Math.min(90000, 5000 * attempt))
     }
   }
   throw new Error(`MusicBrainz hiba (${path}): ${lastError}`)
@@ -96,25 +97,62 @@ async function readJson(file, fallback) {
 }
 
 // --- 1. magyar előadók listája (cache-elve) ---
+// A MusicBrainz keresője egy lekérdezésre legfeljebb az első 500 találatot adja (efölött 400-as hiba),
+// ezért a magyar előadókat névkezdő előtagok szerint szedjük össze (a-z, 0-9, ékezetes betűk).
+// Ahol egy előtagra 500-nál több találat van, ott eggyel hosszabb előtagokra bontjuk.
+const ALPHABET = [...'abcdefghijklmnopqrstuvwxyz0123456789áéíóöőúüű']
+const MB_SEARCH_CAP = 500
+const MAX_PREFIX_LEN = 3
+
 async function loadHungarianArtists() {
   const cached = await readJson(ARTISTS_FILE, null)
   if (cached?.complete) return cached.artists
 
-  const artists = cached?.artists ?? []
-  let offset = artists.length
-  console.log(`Magyar előadók lekérése a MusicBrainz-ből (eddig ${offset})...`)
-  for (;;) {
-    const data = await mbGet(`/artist/?query=${encodeURIComponent('country:HU')}&fmt=json&limit=100&offset=${offset}`)
-    const page = data.artists ?? []
-    for (const a of page) artists.push({ id: a.id, name: a.name })
-    offset += page.length
-    const total = data.count ?? offset
-    console.log(`  ${offset}/${total}`)
-    const done = page.length === 0 || offset >= total
-    await writeFile(ARTISTS_FILE, JSON.stringify({ complete: done, artists }))
-    if (done) break
+  const byId = new Map((cached?.artists ?? []).map((a) => [a.id, a]))
+  const donePrefixes = new Set(cached?.donePrefixes ?? [])
+  const save = (complete) =>
+    writeFile(ARTISTS_FILE, JSON.stringify({ complete, artists: [...byId.values()], donePrefixes: [...donePrefixes] }))
+
+  const search = (query, offset) =>
+    mbGet(`/artist/?query=${encodeURIComponent(query)}&fmt=json&limit=100&offset=${offset}`)
+
+  async function fetchAllPages(query, first) {
+    let data = first
+    let offset = 0
+    for (;;) {
+      const page = data.artists ?? []
+      for (const a of page) byId.set(a.id, { id: a.id, name: a.name })
+      offset += page.length
+      if (page.length === 0 || offset >= (data.count ?? 0) || offset >= MB_SEARCH_CAP) break
+      data = await search(query, offset)
+    }
   }
-  return artists
+
+  async function processPrefix(prefix) {
+    if (donePrefixes.has(prefix)) return
+    const query = `country:HU AND artist:${prefix}*`
+    const first = await search(query, 0)
+    const count = first.count ?? 0
+
+    if (count > MB_SEARCH_CAP && prefix.length < MAX_PREFIX_LEN) {
+      // az "ő" szó maga ("artist:prefix") és a hosszabb előtagok külön
+      await fetchAllPages(`country:HU AND artist:${prefix}`, await search(`country:HU AND artist:${prefix}`, 0))
+      for (const ch of ALPHABET) await processPrefix(prefix + ch)
+    } else {
+      if (count > MB_SEARCH_CAP) console.warn(`  Figyelem: "${prefix}*" találata ${count}, csak az első ${MB_SEARCH_CAP} jön be.`)
+      await fetchAllPages(query, first)
+    }
+    donePrefixes.add(prefix)
+    if (prefix.length === 1) {
+      console.log(`  "${prefix}*" kész (${count} találat), összesen ${byId.size} előadó`)
+      await save(false)
+    }
+  }
+
+  console.log(`Magyar előadók lekérése a MusicBrainz-ből (eddig ${byId.size})...`)
+  for (const ch of ALPHABET) await processPrefix(ch)
+  await save(true)
+  return [...byId.values()]
 }
 
 // --- 2. adatbázis ---
