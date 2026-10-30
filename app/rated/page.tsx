@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
 import { Reveal } from '@/components/landing/Reveal'
 import { PlayButton } from '@/components/player/PlayButton'
+import { fetchFeaturedByAlbum, withFeat } from '@/lib/credits'
 
 type RatingRow = {
   score: number
@@ -122,6 +123,8 @@ export default function RatedPage() {
         artistsById.set(ar.id, ar)
       }
 
+      const featuredByAlbum = await fetchFeaturedByAlbum(albumIds)
+
       // Összefűzés egy listává
       const mapped: RatedItem[] = ratings
         .map((r) => {
@@ -134,7 +137,7 @@ export default function RatedPage() {
             title: track.title,
             albumTitle: album?.title ?? '',
             coverUrl: album?.cover_url ?? null,
-            artistName: artist?.name ?? 'Ismeretlen előadó',
+            artistName: withFeat(artist?.name ?? 'Ismeretlen előadó', featuredByAlbum.get(track.album_id)),
             spotifyTrackId: track.spotify_track_id,
             spotifyAlbumId: album?.spotify_album_id ?? null,
             rating: Number(r.score),

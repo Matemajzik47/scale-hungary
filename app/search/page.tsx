@@ -8,6 +8,7 @@ import { updateUserStats } from '@/lib/userStats'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
 import { PlayButton } from '@/components/player/PlayButton'
 import type { DiscoverTrack } from '@/types/discover'
+import { fetchFeaturedByAlbum, withFeat } from '@/lib/credits'
 
 type SearchRow = {
   track_id: string
@@ -89,6 +90,8 @@ export default function SearchPage() {
         }
       }
 
+      const featured = await fetchFeaturedByAlbum(rows.map((r) => r.album_id))
+
       const items: DiscoverTrack[] = rows.map((r) => {
         const scores = ratingsByTrack.get(r.track_id) ?? []
         return {
@@ -101,7 +104,7 @@ export default function SearchPage() {
             cover_url: r.cover_url,
             spotify_album_id: r.spotify_album_id,
           },
-          artist: { id: r.artist_id, name: r.artist_name },
+          artist: { id: r.artist_id, name: withFeat(r.artist_name, featured.get(r.album_id)) },
           communityAverage: scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : null,
           totalRatings: scores.length,
           userRating: mine[r.track_id] ?? null,
@@ -164,6 +167,7 @@ export default function SearchPage() {
         prev.map((t) => (t.id === track.id ? { ...t, userRating: score } : t))
       )
       await updateUserStats(userId)
+      window.dispatchEvent(new CustomEvent('scale:rated', { detail: { trackId: track.id, score } }))
     }
     setSavingId(null)
   }

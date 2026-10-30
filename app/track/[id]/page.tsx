@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { updateUserStats } from '@/lib/userStats'
 import { RequireAuthModal } from '@/components/RequireAuthModal'
 import { PlayButton } from '@/components/player/PlayButton'
+import { fetchFeaturedByAlbum, withFeat } from '@/lib/credits'
 
 type TrackRow = { id: string; title: string; album_id: string; spotify_track_id: string | null }
 type AlbumRow = { id: string; title: string; cover_url: string | null; artist_id: string }
@@ -134,6 +135,8 @@ export default function TrackPage() {
           .eq('id', a.artist_id)
           .maybeSingle()
         artist = (artistData as { name: string } | null)?.name ?? artist
+        const featured = await fetchFeaturedByAlbum([a.id])
+        artist = withFeat(artist, featured.get(a.id))
       }
 
       const { data: siblingsData } = await supabase
@@ -202,6 +205,7 @@ export default function TrackPage() {
       setSaveStatus('Hiba a mentéskor')
     } else {
       await updateUserStats(userId)
+      window.dispatchEvent(new CustomEvent('scale:rated', { detail: { trackId: track.id, score: myScore } }))
       setRatings((prev) => {
         const existing = prev.find((r) => r.track_id === track.id && r.user_id === userId)
         if (existing) {

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { fetchFeaturedByAlbum, fetchFeaturedByTrack, withFeat } from '@/lib/credits'
 
 export type TrackCardData = {
   trackId: string
@@ -21,6 +22,13 @@ type TrendingRow = {
   note?: string | null
 }
 
+/** A felkapott/legjobb/stb. listákon a dalok előadója mellé kerül a vendég is (feat.). */
+async function withFeatured(cards: TrackCardData[]): Promise<TrackCardData[]> {
+  if (cards.length === 0) return cards
+  const featured = await fetchFeaturedByTrack(cards.map((c) => c.trackId))
+  return cards.map((c) => ({ ...c, artist: withFeat(c.artist, featured.get(c.trackId)) }))
+}
+
 function mapRow(r: TrendingRow, countFromRecent: boolean): TrackCardData {
   return {
     trackId: r.track_id,
@@ -37,7 +45,7 @@ function mapRow(r: TrendingRow, countFromRecent: boolean): TrackCardData {
 export async function fetchTrending(days: number, limit = 10): Promise<TrackCardData[] | null> {
   const { data, error } = await supabase.rpc('trending_tracks', { p_days: days, p_limit: limit })
   if (error) return null
-  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, true))
+  return withFeatured(((data ?? []) as TrendingRow[]).map((r) => mapRow(r, true)))
 }
 
 /** Legjobb átlagú dalok az időszakban (legalább minCount értékeléssel). */
@@ -48,28 +56,28 @@ export async function fetchTopRated(days: number, minCount = 2, limit = 10): Pro
     p_limit: limit,
   })
   if (error) return null
-  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
+  return withFeatured(((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false)))
 }
 
 /** Megosztó: nagy a szórás az értékelések között. */
 export async function fetchDivisive(limit = 12): Promise<TrackCardData[] | null> {
   const { data, error } = await supabase.rpc('divisive_tracks', { p_min: 3, p_limit: limit })
   if (error) return null
-  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
+  return withFeatured(((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false)))
 }
 
 /** Rejtett gyöngyszemek: magas átlag, kevés értékelés. */
 export async function fetchHiddenGems(limit = 12): Promise<TrackCardData[] | null> {
   const { data, error } = await supabase.rpc('hidden_gems', { p_limit: limit })
   if (error) return null
-  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
+  return withFeatured(((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false)))
 }
 
 /** Neked javasolt (csak bejelentkezve értelmes): hasonló ízlésű felhasználók kedvencei. */
 export async function fetchRecommended(limit = 12): Promise<TrackCardData[] | null> {
   const { data, error } = await supabase.rpc('recommended_tracks', { p_limit: limit })
   if (error) return null
-  return ((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false))
+  return withFeatured(((data ?? []) as TrendingRow[]).map((r) => mapRow(r, false)))
 }
 
 export type FreshRelease = {
@@ -99,10 +107,13 @@ export async function fetchFreshReleases(limit = 12): Promise<FreshRelease[]> {
     .order('release_date', { ascending: false })
     .limit(limit)
 
-  return ((data ?? []) as unknown as FreshRow[]).map((a) => ({
+  const rows = (data ?? []) as unknown as FreshRow[]
+  const featured = await fetchFeaturedByAlbum(rows.map((a) => a.id))
+
+  return rows.map((a) => ({
     albumId: a.id,
     title: a.title,
-    artist: a.artists?.name ?? 'Ismeretlen előadó',
+    artist: withFeat(a.artists?.name ?? 'Ismeretlen előadó', featured.get(a.id)),
     coverUrl: a.cover_url,
     firstTrackId: a.tracks?.[0]?.id ?? null,
   }))
@@ -131,12 +142,13 @@ async function fetchTrackMeta(trackIds: string[]): Promise<Map<string, TrackMeta
     .in('id', artistIds.length > 0 ? artistIds : [''])
   const artistById = new Map(((artists ?? []) as { id: string; name: string }[]).map((a) => [a.id, a.name]))
   const albumById = new Map(albumRows.map((a) => [a.id, a]))
+  const featuredByAlbum = await fetchFeaturedByAlbum(albumIds)
 
   for (const t of trackRows) {
     const album = albumById.get(t.album_id)
     out.set(t.id, {
       title: t.title,
-      artist: (album && artistById.get(album.artist_id)) ?? 'Ismeretlen előadó',
+      artist: withFeat((album && artistById.get(album.artist_id)) ?? 'Ismeretlen előadó', featuredByAlbum.get(t.album_id)),
       coverUrl: album?.cover_url ?? null,
     })
   }

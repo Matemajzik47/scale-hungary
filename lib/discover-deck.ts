@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import type { DiscoverTrack } from '@/types/discover'
+import { fetchFeaturedByAlbum, withFeat } from '@/lib/credits'
 
 type DeckRow = {
   track_id: string
@@ -41,7 +42,10 @@ export async function fetchDeckBatch(
   })
   if (error || !data) return null
 
-  return (data as DeckRow[]).map((r) => ({
+  const rows = data as DeckRow[]
+  const featured = await fetchFeaturedByAlbum(rows.map((r) => r.album_id))
+
+  return rows.map((r) => ({
     id: r.track_id,
     title: r.title,
     spotify_track_id: r.spotify_track_id,
@@ -51,7 +55,7 @@ export async function fetchDeckBatch(
       cover_url: r.cover_url,
       spotify_album_id: r.spotify_album_id,
     },
-    artist: { id: r.artist_id, name: r.artist_name },
+    artist: { id: r.artist_id, name: withFeat(r.artist_name, featured.get(r.album_id)) },
     communityAverage: r.community_avg === null ? null : Number(r.community_avg),
     totalRatings: Number(r.total_ratings),
     userRating: null,
