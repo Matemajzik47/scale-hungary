@@ -8,6 +8,10 @@
 //   --since=2016      az ennél korábbi kiadásokat kihagyja (alap: 2016)
 //   --dry             nem ír az adatbázisba, csak kiírja, mit tenne
 //   --max-artists=50  csak ennyi előadót dolgoz fel (kipróbáláshoz)
+//   --retype          minden előadót újra átnéz, és a már betöltött kiadásoknál kitölti a hiányzó típust
+//                     (album / ep / single), és a korábban külön kiadásként bekerült vendég-közreműködéseket (feat.)
+//                     az elsődleges előadó kiadásához köti (értékelés nélküli másolat törlődik).
+//                     Előtte futtasd le az add-release-type.sql-t és az add-credits.sql-t.
 //
 // Mit csinál:
 //  1. Lekéri az összes magyar (country:HU) előadót a MusicBrainz-ből (.import-hu-artists.json cache).
@@ -29,7 +33,8 @@ const MB = 'https://musicbrainz.org/ws/2'
 const USER_AGENT = 'ScaleApp/0.1 (matemajzik47@gmail.com)'
 const GAP_MS = 1100
 const ARTISTS_FILE = '.import-hu-artists.json'
-const STATE_FILE = '.import-hu-state.json'
+const RETYPE = process.argv.includes('--retype')
+const STATE_FILE = RETYPE ? '.import-hu-retype.json' : '.import-hu-state.json'
 // Ezeket a másodlagos típusokat nem töltjük be (válogatás, élő, remix stb.)
 const EXCLUDED_SECONDARY = new Set(['Compilation', 'Live', 'Remix', 'DJ-mix', 'Demo', 'Mixtape/Street', 'Interview', 'Spokenword', 'Audiobook'])
 
@@ -186,17 +191,30 @@ async function main() {
   // Meglévő adatok memóriában, hogy ne kelljen előadónként rákérdezni
   const [dbArtists, dbAlbums, skippedRows] = await Promise.all([
     fetchAll(db, 'artists', 'id, name, mb_artist_id'),
-    fetchAll(db, 'albums', 'artist_id, title'),
+    fetchAll(db, 'albums', 'id, artist_id, title, release_type'),
     fetchAll(db, 'skipped_artists', 'mb_artist_id'),
   ])
   const artistByMb = new Map(dbArtists.filter((a) => a.mb_artist_id).map((a) => [a.mb_artist_id, a]))
-  const artistByName = new Map(dbArtists.map((a) => [norm(a.name), a]))
+  // Név szerint több előadó is lehet (azonos nevű, de más személy), ezért listát tárolunk
+  const artistsByName = new Map()
+  for (const a of dbArtists) {
+    const k = norm(a.name)
+    artistsByName.set(k, [...(artistsByName.get(k) ?? []), a])
+  }
+  // Előbb azonosító alapján keresünk. Név alapján csak olyan előadót használunk, akinek még nincs
+  // MusicBrainz-azonosítója: a más azonosítójú, azonos nevű előadó egy MÁSIK személy.
+  const findArtist = (mbId, name) =>
+    artistByMb.get(mbId) ?? (artistsByName.get(norm(name)) ?? []).find((a) => !a.mb_artist_id) ?? null
   const skipped = new Set(skippedRows.map((s) => s.mb_artist_id))
-  const albumKeys = new Set(dbAlbums.map((a) => `${a.artist_id}|${norm(a.title)}`))
+  const albumKeys = new Map(dbAlbums.map((a) => [`${a.artist_id}|${norm(a.title)}`, { id: a.id, type: a.release_type }]))
 
-  const state = await readJson(STATE_FILE, { done: [] })
+  const hungarianIds = new Set(hungarian.map((a) => a.id))
+  const state = await readJson(STATE_FILE, { done: [], pending: [] })
   const done = new Set(state.done)
-  const stats = { artistsChecked: 0, newArtists: 0, newAlbums: 0, skippedExisting: 0, errors: 0 }
+  // Vendég-közreműködések, amik az elsődleges kiadás betöltése után köthetők össze
+  let pending = state.pending ?? []
+  const saveState = () => writeFile(STATE_FILE, JSON.stringify({ done: [...done], pending }))
+  const stats = { artistsChecked: 0, newArtists: 0, newAlbums: 0, skippedExisting: 0, typed: 0, linkedFeatures: 0, removedFeatures: 0, errors: 0 }
   let processedThisRun = 0
 
   for (const [index, artist] of hungarian.entries()) {
@@ -209,7 +227,7 @@ async function main() {
       const groups = []
       for (let offset = 0; ; offset += 100) {
         const data = await mbGet(
-          `/release-group?artist=${artist.id}&type=album|ep|single&fmt=json&limit=100&offset=${offset}`
+          `/release-group?artist=${artist.id}&type=album|ep|single&inc=artist-credits&fmt=json&limit=100&offset=${offset}`
         )
         const page = data['release-groups'] ?? []
         groups.push(...page)
@@ -218,15 +236,40 @@ async function main() {
 
       const wanted = []
       for (const g of groups) {
+        // Ha az első feltüntetett előadó másik MAGYAR előadó, az övé a kiadás, ez az előadó csak vendég
+        const primaryId = g['artist-credit']?.[0]?.artist?.id
+        if (primaryId && primaryId !== artist.id && hungarianIds.has(primaryId)) {
+          if (!pending.some((p) => p.artistId === artist.id && p.primaryId === primaryId && norm(p.title) === norm(g.title))) {
+            pending.push({ artistId: artist.id, name: artist.name, primaryId, title: g.title })
+          }
+          continue
+        }
         const date = normalizeDate(g['first-release-date'])
         if (!date || Number(date.slice(0, 4)) < SINCE_YEAR) continue
         if ((g['secondary-types'] ?? []).some((t) => EXCLUDED_SECONDARY.has(t))) continue
-        wanted.push({ title: g.title, date })
+        const type = ['album', 'ep', 'single'].includes((g['primary-type'] ?? '').toLowerCase())
+          ? g['primary-type'].toLowerCase()
+          : null
+        wanted.push({ title: g.title, date, type })
       }
 
       if (wanted.length > 0) {
         // Előadó megkeresése vagy létrehozása
-        let dbArtist = artistByMb.get(artist.id) ?? artistByName.get(norm(artist.name))
+        let dbArtist = findArtist(artist.id, artist.name)
+        // A már betöltött kiadásoknál kitöltjük a hiányzó típust
+        if (dbArtist) {
+          for (const w of wanted) {
+            const known = albumKeys.get(`${dbArtist.id}|${norm(w.title)}`)
+            if (known && !known.type && w.type) {
+              if (!DRY) {
+                const { error } = await db.from('albums').update({ release_type: w.type }).eq('id', known.id)
+                if (error) throw error
+              }
+              known.type = w.type
+              stats.typed++
+            }
+          }
+        }
         const fresh = wanted.filter((w) => !dbArtist || !albumKeys.has(`${dbArtist.id}|${norm(w.title)}`))
         stats.skippedExisting += wanted.length - fresh.length
 
@@ -244,7 +287,7 @@ async function main() {
               dbArtist = data
             }
             artistByMb.set(artist.id, dbArtist)
-            artistByName.set(norm(artist.name), dbArtist)
+            artistsByName.set(norm(artist.name), [...(artistsByName.get(norm(artist.name)) ?? []), dbArtist])
             stats.newArtists++
           } else if (!dbArtist.mb_artist_id && !DRY) {
             // A meglévő előadó kapja meg az azonosítót, hogy a figyelés is kezelje
@@ -276,6 +319,7 @@ async function main() {
                   title: w.title,
                   release_date: w.date,
                   release_week: isoWeek(w.date),
+                  release_type: w.type,
                 }))
               )
               .select('id, title')
@@ -285,8 +329,13 @@ async function main() {
               .from('tracks')
               .insert(albums.map((a) => ({ album_id: a.id, title: a.title, spotify_track_id: null })))
             if (trackError) throw trackError
+            for (const a of albums) {
+              const w = uniqueFresh.find((x) => norm(x.title) === norm(a.title))
+              albumKeys.set(`${dbArtist.id}|${norm(a.title)}`, { id: a.id, type: w?.type ?? null })
+            }
+          } else {
+            for (const w of uniqueFresh) albumKeys.set(`${dbArtist.id}|${norm(w.title)}`, { id: null, type: w.type })
           }
-          for (const w of uniqueFresh) albumKeys.add(`${dbArtist.id}|${norm(w.title)}`)
           stats.newAlbums += uniqueFresh.length
         }
       }
@@ -299,15 +348,71 @@ async function main() {
     }
 
     if (processedThisRun % 25 === 0) {
-      if (!DRY) await writeFile(STATE_FILE, JSON.stringify({ done: [...done] }))
+      if (!DRY) await saveState()
       console.log(
         `[${index + 1}/${hungarian.length}] ellenőrzött: ${stats.artistsChecked}, új előadó: ${stats.newArtists}, új album: ${stats.newAlbums}, hiba: ${stats.errors}`
       )
     }
   }
 
-  if (!DRY) await writeFile(STATE_FILE, JSON.stringify({ done: [...done] }))
-  console.log('Kész.', JSON.stringify(stats))
+  // Vendég-közreműködések összekötése az elsődleges előadó kiadásával
+  if (!DRY) {
+    const left = []
+    for (const p of pending) {
+      try {
+        const primary = artistByMb.get(p.primaryId)
+        const album = primary ? albumKeys.get(`${primary.id}|${norm(p.title)}`) : null
+        if (!album?.id) {
+          left.push(p) // az elsődleges kiadás még nincs az adatbázisban
+          continue
+        }
+        // A vendég előadó legyen az adatbázisban (magyar előadó a MusicBrainz szerint)
+        let featured = artistByMb.get(p.artistId)
+        if (!featured) {
+          const { data, error } = await db
+            .from('artists')
+            .insert({ name: p.name, country: 'HU', mb_artist_id: p.artistId, origin_checked_at: new Date().toISOString() })
+            .select('id, name, mb_artist_id')
+            .single()
+          if (error) throw error
+          featured = data
+          artistByMb.set(p.artistId, featured)
+          stats.newArtists++
+        }
+        const { error: linkError } = await db
+          .from('album_artists')
+          .upsert({ album_id: album.id, artist_id: featured.id, role: 'featured' }, { onConflict: 'album_id,artist_id' })
+        if (linkError) throw linkError
+        stats.linkedFeatures++
+
+        // A korábban tévesen külön kiadásként bekerült másolat törlése, ha nincs rajta értékelés
+        const dupKey = `${featured.id}|${norm(p.title)}`
+        const dup = albumKeys.get(dupKey)
+        if (dup?.id && dup.id !== album.id) {
+          const { data: tracks } = await db.from('tracks').select('id').eq('album_id', dup.id)
+          const trackIds = (tracks ?? []).map((t) => t.id)
+          let rated = false
+          if (trackIds.length > 0) {
+            const { count } = await db.from('ratings').select('*', { count: 'exact', head: true }).in('track_id', trackIds)
+            rated = (count ?? 0) > 0
+          }
+          if (!rated) {
+            const { error } = await db.from('albums').delete().eq('id', dup.id)
+            if (error) throw error
+            albumKeys.delete(dupKey)
+            stats.removedFeatures++
+          }
+        }
+      } catch (err) {
+        stats.errors++
+        left.push(p)
+        console.error(`Hiba (feat. ${p.name} – ${p.title}): ${err instanceof Error ? err.message : JSON.stringify(err)}`)
+      }
+    }
+    pending = left
+    await saveState()
+  }
+  console.log('Kész.', JSON.stringify({ ...stats, folyamatban_levo_feat: pending.length }))
 }
 
 await main()
